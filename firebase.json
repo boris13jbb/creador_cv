@@ -1,0 +1,34 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "cvmaker-saas-jb",
+          "appId": "1:929255435139:android:9fe09d56d2b257387be4b6",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "cvmaker-saas-jb",
+          "configurations": {
+            "android": "1:929255435139:android:9fe09d56d2b257387be4b6",
+            "web": "1:929255435139:web:2305abba6d9f2d1a7be4b6",
+            "windows": "1:929255435139:web:6c1bc263994ca7287be4b6"
+          }
+        }
+      }
+    }
+  }
+}

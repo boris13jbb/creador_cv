@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "929255435139",
+    "project_id": "cvmaker-saas-jb",
+    "storage_bucket": "cvmaker-saas-jb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:929255435139:android:9fe09d56d2b257387be4b6",
+        "android_client_info": {
+          "package_name": "com.brs.creador_cv"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDj43PdCanvCotnNPA_kLL-4kpOvKP3gV8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
