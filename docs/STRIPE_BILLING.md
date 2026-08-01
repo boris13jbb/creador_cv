@@ -4,6 +4,29 @@ Backend real: **Checkout Session + Customer Portal + Webhook idempotente** que e
 
 **No se despliegan Functions ni secretos sin tu autorización explícita.**
 
+## Despliegue de Functions (estado)
+
+La entrada `index.ts` **no** exporta Stripe por defecto (evita exigir Secret Manager al desplegar límites Free).
+
+### 1) Límites Free (`syncResumeUsage`, `onResumeUsageChanged`)
+
+Requiere IAM de Eventarc/PubSub/Cloud Run. Si el CLI falla, en Cloud Console (cuenta Owner) aplica:
+
+```text
+roles/iam.serviceAccountTokenCreator → service-ACCOUNT@gcp-sa-pubsub.iam.gserviceaccount.com
+roles/run.invoker → PROJECT_NUMBER-compute@developer.gserviceaccount.com
+roles/eventarc.eventReceiver → PROJECT_NUMBER-compute@developer.gserviceaccount.com
+```
+
+O instala Google Cloud SDK y reintenta el deploy.
+
+### 2) Billing Stripe
+
+1. Activa [Secret Manager API](https://console.developers.google.com/apis/api/secretmanager.googleapis.com/overview?project=cvmaker-saas-jb).
+2. Crea secretos `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`.
+3. Re-exporta desde `index.ts` los símbolos de `billing.ts` (o apunta `main` a `lib/billing.js` en un codebase aparte).
+4. `firebase deploy --only functions:createCheckoutSession,functions:createPortalSession,functions:stripeWebhook`
+
 ## Arquitectura
 
 | Pieza | Rol |

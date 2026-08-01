@@ -1,8 +1,8 @@
 import {onRequest} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions";
 import * as admin from "firebase-admin";
+import {FUNCTIONS_REGION} from "./runtime";
 import {requireUidFromRequest, jsonError, isUnauthenticatedError} from "./auth";
-import {FUNCTIONS_REGION} from "./config";
 import {canCreateResume, isProEntitlement} from "./planLimits";
 import {refreshResumeUsage} from "./usageStore";
 

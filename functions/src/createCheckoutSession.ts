@@ -1,13 +1,13 @@
 import {onRequest} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions";
 import {requireUidFromRequest, jsonError, isUnauthenticatedError} from "./auth";
+import {FUNCTIONS_REGION} from "./runtime";
 import {
   checkoutCancelUrl,
   checkoutSuccessUrl,
-  FUNCTIONS_REGION,
   stripePriceId,
   stripeSecretKey,
-} from "./config";
+} from "./stripeConfig";
 import {createStripe, getOrCreateStripeCustomer} from "./stripeStore";
 
 /**

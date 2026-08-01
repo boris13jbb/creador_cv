@@ -18,5 +18,3 @@ export const checkoutCancelUrl = defineString("CHECKOUT_CANCEL_URL", {
 export const portalReturnUrl = defineString("PORTAL_RETURN_URL", {
   default: "https://example.com/pricing",
 });
-
-export const FUNCTIONS_REGION = "us-central1";

@@ -112,11 +112,15 @@ service cloud.firestore {
     }
 
     // Contador materializado por Functions (`syncResumeUsage` / triggers).
-    // Free: exige doc usage y resumeCount < 3. Pro: sin tope en reglas.
+    // Free con usage: resumeCount < 3. Sin usage (Functions aún no sync):
+    // se permite create (límites cliente); tras sync el tope queda en reglas.
     function freeUnderResumeLimit(userId) {
-      return exists(/databases/$(database)/documents/usage/$(userId))
-        && get(/databases/$(database)/documents/usage/$(userId)).data.resumeCount is int
-        && get(/databases/$(database)/documents/usage/$(userId)).data.resumeCount < 3;
+      let usagePath = /databases/$(database)/documents/usage/$(userId);
+      return !exists(usagePath)
+        || (
+          get(usagePath).data.resumeCount is int
+          && get(usagePath).data.resumeCount < 3
+        );
     }
 
     function canCreateResumeDoc(userId) {

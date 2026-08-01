@@ -1,13 +1,15 @@
 import * as admin from "firebase-admin";
 import {setGlobalOptions} from "firebase-functions/v2";
-import {FUNCTIONS_REGION} from "./config";
+import {FUNCTIONS_REGION} from "./runtime";
 
 admin.initializeApp();
 setGlobalOptions({region: FUNCTIONS_REGION});
 
-export {createCheckoutSession} from "./createCheckoutSession";
-export {createPortalSession} from "./createPortalSession";
-export {stripeWebhook} from "./stripeWebhook";
+/**
+ * Entrada por defecto sin secretos Stripe (Secret Manager no requerido).
+ * Para billing: exporta también desde `billing.ts` o reactiva las líneas en
+ * docs/STRIPE_BILLING.md tras crear STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET.
+ */
 export {syncResumeUsage} from "./syncResumeUsage";
 export {onResumeUsageChanged} from "./resumeUsageTriggers";
 

@@ -1,11 +1,8 @@
 import {onRequest} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions";
 import Stripe from "stripe";
-import {
-  FUNCTIONS_REGION,
-  stripeSecretKey,
-  stripeWebhookSecret,
-} from "./config";
+import {FUNCTIONS_REGION} from "./runtime";
+import {stripeSecretKey, stripeWebhookSecret} from "./stripeConfig";
 import {
   applySubscriptionSnapshot,
   claimStripeEvent,

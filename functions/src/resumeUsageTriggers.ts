@@ -1,6 +1,6 @@
 import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import {logger} from "firebase-functions";
-import {FUNCTIONS_REGION} from "./config";
+import {FUNCTIONS_REGION} from "./runtime";
 import {refreshResumeUsage} from "./usageStore";
 
 /**

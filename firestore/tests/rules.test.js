@@ -214,10 +214,10 @@ test('resumes: owner CRUD; otro usuario denegado', async () => {
   );
 });
 
-test('resumes Free: create denegado sin usage', async () => {
+test('resumes Free: create permitido sin usage (transición hasta sync)', async () => {
   const uid = 'free_no_usage';
   const db = testEnv.authenticatedContext(uid).firestore();
-  await assertFails(
+  await assertSucceeds(
     setDoc(doc(db, 'users', uid, 'resumes', 'cv1'), resume(uid)),
   );
 });
