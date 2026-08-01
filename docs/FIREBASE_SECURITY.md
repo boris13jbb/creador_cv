@@ -17,10 +17,10 @@ Los campos `plan` y `subscriptionStatus` **ya no se escriben** desde el cliente 
 
 1. Function HTTP `syncResumeUsage` (Bearer) recuenta CVs y escribe `usage/{uid}`.
 2. Trigger `onResumeUsageChanged` mantiene el contador tras create/update/delete.
-3. Reglas: Free solo puede **create** si `usage.resumeCount < 3`; Pro (`entitlements` active/trialing) sin tope.
+3. Reglas: Free solo puede **create** si no hay `usage` o `resumeCount < 3`; Pro (`entitlements` active/trialing) sin tope.
 4. Cliente: sync al login (best-effort) y antes de crear un CV nuevo Free.
 
-**Despliega Functions y rules juntos.** Sin `syncResumeUsage`, un usuario Free no podrá crear CVs tras el deploy de reglas.
+**Despliega Functions y rules juntos.** Sin `syncResumeUsage`, el contador no se materializa vía HTTP.
 
 ```powershell
 firebase deploy --only functions:syncResumeUsage,functions:onResumeUsageChanged,firestore:rules --project cvmaker-saas-jb
