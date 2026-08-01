@@ -7,14 +7,14 @@
 
 | Criterio | Estado en código | Pendiente operativo |
 |----------|------------------|---------------------|
-| No autoasignarse Pro | Listo (reglas + sin API cliente) | Deploy `firestore.rules` |
-| Stripe activa/cancela vía webhook | Listo (`functions/`) | Secrets + deploy Functions + webhook |
+| No autoasignarse Pro | Listo | **Rules desplegadas** (2026-08-01) |
+| Stripe activa/cancela vía webhook | Listo (`billing.ts`) | Secret Manager + secretos + export en index + IAM |
 | Pro se conserva en Windows | Listo (REST GET previo / entitlements) | Probar en Windows real post-deploy |
 | Sesión REST + refresh | Listo (`flutter_secure_storage`) | — |
-| Fotos multi-dispositivo (Storage) | Listo | Deploy `storage.rules` |
-| CV solo del dueño | Listo (reglas) | Deploy rules |
+| Fotos multi-dispositivo (Storage) | Listo | Activar Storage en consola + deploy `storage.rules` |
+| CV solo del dueño | Listo | **Rules desplegadas** |
 | CV legacy abren (dual) | Listo + tests | — |
-| Límites Free en servidor | Listo (`usage` + sync + trigger + rules) | Deploy Functions + rules juntos |
+| Límites Free en servidor | Listo (rules: sin `usage` permite create hasta sync) | Deploy Functions usage + roles IAM Eventarc/Run |
 | Plantillas Pro bloqueadas | Listo (UI + PDF) | — |
 | PDF MultiPage | Listo + tests | Tipografías Unicode (mejora) |
 | analyze / tests verdes | Listo | CI en GitHub al hacer push |
