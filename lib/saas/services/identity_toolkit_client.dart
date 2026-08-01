@@ -10,6 +10,9 @@ class AuthSession {
   final String idToken;
   final String refreshToken;
   final String? displayName;
+  final int? expiresInSeconds;
+  final DateTime? expiresAt;
+  final bool? emailVerified;
 
   const AuthSession({
     required this.uid,
@@ -17,7 +20,39 @@ class AuthSession {
     required this.idToken,
     required this.refreshToken,
     this.displayName,
+    this.expiresInSeconds,
+    this.expiresAt,
+    this.emailVerified,
   });
+
+  bool get isExpiredOrNearExpiry {
+    if (expiresAt == null) return true;
+    return DateTime.now().isAfter(
+      expiresAt!.subtract(const Duration(minutes: 5)),
+    );
+  }
+
+  AuthSession copyWith({
+    String? uid,
+    String? email,
+    String? idToken,
+    String? refreshToken,
+    String? displayName,
+    int? expiresInSeconds,
+    DateTime? expiresAt,
+    bool? emailVerified,
+  }) {
+    return AuthSession(
+      uid: uid ?? this.uid,
+      email: email ?? this.email,
+      idToken: idToken ?? this.idToken,
+      refreshToken: refreshToken ?? this.refreshToken,
+      displayName: displayName ?? this.displayName,
+      expiresInSeconds: expiresInSeconds ?? this.expiresInSeconds,
+      expiresAt: expiresAt ?? this.expiresAt,
+      emailVerified: emailVerified ?? this.emailVerified,
+    );
+  }
 }
 
 /// Cliente REST de Firebase Auth (evita el fallo gRPC de Windows).
@@ -64,6 +99,34 @@ class IdentityToolkitClient {
     });
   }
 
+  Future<void> sendEmailVerification(String idToken) async {
+    await _post('accounts:sendOobCode', {
+      'requestType': 'VERIFY_EMAIL',
+      'idToken': idToken,
+    });
+  }
+
+  Future<AuthSession> lookup(String idToken) async {
+    final data = await _post('accounts:lookup', {'idToken': idToken});
+    final users = data['users'] as List?;
+    if (users == null || users.isEmpty) {
+      throw Exception('No se pudo obtener el perfil de autenticación.');
+    }
+    final user = Map<String, dynamic>.from(users.first as Map);
+    return AuthSession(
+      uid: user['localId'] as String? ?? '',
+      email: user['email'] as String? ?? '',
+      idToken: idToken,
+      refreshToken: '',
+      displayName: user['displayName'] as String?,
+      emailVerified: user['emailVerified'] == true,
+    );
+  }
+
+  Future<void> deleteAccount(String idToken) async {
+    await _post('accounts:delete', {'idToken': idToken});
+  }
+
   Future<AuthSession> refresh(String refreshToken) async {
     final uri = Uri.parse(
       'https://securetoken.googleapis.com/v1/token?key=$_apiKey',
@@ -71,34 +134,49 @@ class IdentityToolkitClient {
     final res = await http.post(
       uri,
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: 'grant_type=refresh_token&refresh_token=$refreshToken',
+      body:
+          'grant_type=refresh_token&refresh_token=${Uri.encodeQueryComponent(refreshToken)}',
     );
     final data = jsonDecode(res.body);
     if (res.statusCode < 200 || res.statusCode >= 300) {
       final error = data is Map ? data['error'] : null;
-      final message = (error is Map ? error['message'] : null) ?? 'REFRESH_FAILED';
+      final message =
+          (error is Map ? error['message'] : null) ?? 'REFRESH_FAILED';
       throw Exception(_mapRestError(message.toString()));
     }
     final map = Map<String, dynamic>.from(data as Map);
+    final expiresIn = int.tryParse('${map['expires_in'] ?? 3600}') ?? 3600;
     return AuthSession(
       uid: map['user_id'] as String? ?? '',
       email: '',
       idToken: map['id_token'] as String? ?? '',
       refreshToken: map['refresh_token'] as String? ?? refreshToken,
+      expiresInSeconds: expiresIn,
+      expiresAt: DateTime.now().add(Duration(seconds: expiresIn)),
     );
   }
 
-  AuthSession _sessionFrom(Map<String, dynamic> data, {required String fallbackEmail}) {
+  AuthSession _sessionFrom(
+    Map<String, dynamic> data, {
+    required String fallbackEmail,
+  }) {
+    final expiresIn = int.tryParse('${data['expiresIn'] ?? 3600}') ?? 3600;
     return AuthSession(
       uid: data['localId'] as String? ?? '',
       email: data['email'] as String? ?? fallbackEmail,
       idToken: data['idToken'] as String? ?? '',
       refreshToken: data['refreshToken'] as String? ?? '',
       displayName: data['displayName'] as String?,
+      expiresInSeconds: expiresIn,
+      expiresAt: DateTime.now().add(Duration(seconds: expiresIn)),
+      emailVerified: data['emailVerified'] == true,
     );
   }
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> _post(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
     final uri = Uri.parse(
       'https://identitytoolkit.googleapis.com/v1/$path?key=$_apiKey',
     );
@@ -141,6 +219,11 @@ class IdentityToolkitClient {
         return 'Activa Email/Password en Firebase Authentication.';
       case 'API_KEY_INVALID':
         return 'API key de Firebase inválida.';
+      case 'INVALID_REFRESH_TOKEN':
+      case 'TOKEN_EXPIRED':
+      case 'USER_TOKEN_EXPIRED':
+      case 'REFRESH_FAILED':
+        return 'La sesión expiró. Vuelve a iniciar sesión.';
       default:
         return 'No se pudo completar la autenticación ($message).';
     }

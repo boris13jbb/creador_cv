@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Creador Cv</string>
+	<string>CV Maker</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -66,5 +66,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CV Maker necesita acceso a tus fotos para añadir tu fotografía al currículum.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CV Maker necesita la cámara para tomar tu fotografía de perfil del CV.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>CV Maker puede guardar imágenes relacionadas con tu currículum.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

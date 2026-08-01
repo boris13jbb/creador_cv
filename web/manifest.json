@@ -1,13 +1,15 @@
 {
-    "name": "creador_cv",
-    "short_name": "creador_cv",
+    "name": "CV Maker",
+    "short_name": "CV Maker",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#0B1F3A",
+    "theme_color": "#0B1F3A",
+    "description": "Crea, edita y exporta currículums profesionales en PDF.",
+    "orientation": "any",
     "prefer_related_applications": false,
+    "categories": ["productivity", "business"],
+    "lang": "es",
     "icons": [
         {
             "src": "icons/Icon-192.png",

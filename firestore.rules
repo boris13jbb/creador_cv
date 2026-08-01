@@ -4,18 +4,166 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isString(value, maxLen) {
+      return value is string && value.size() <= maxLen;
+    }
+
+    function isOptionalString(value, maxLen) {
+      return value == null || isString(value, maxLen);
+    }
+
+    // Campos de perfil editables por el cliente (sin privilegios).
+    function userEditableKeys() {
+      return ['uid', 'email', 'displayName', 'createdAt', 'updatedAt', 'schemaVersion'];
+    }
+
+    function validUserCreate() {
+      return request.resource.data.keys().hasOnly(userEditableKeys())
+        && request.resource.data.uid == request.auth.uid
+        && isString(request.resource.data.email, 320)
+        && isString(request.resource.data.displayName, 120)
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion == 1
+        && isString(request.resource.data.createdAt, 40)
+        && isString(request.resource.data.updatedAt, 40);
+    }
+
+    function validUserUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'updatedAt', 'email', 'schemaVersion'])
+        && isString(request.resource.data.displayName, 120)
+        && isString(request.resource.data.email, 320)
+        && isString(request.resource.data.updatedAt, 40)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Bootstrap/migración de entitlements: create una sola vez.
+    // update/delete desde cliente: denegado (solo Admin SDK / Functions).
+    function entitlementKeys() {
+      return [
+        'uid',
+        'plan',
+        'subscriptionStatus',
+        'trialEndsAt',
+        'source',
+        'schemaVersion',
+        'createdAt',
+        'updatedAt'
+      ];
+    }
+
+    function legacyUserPlan() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function canBootstrapFreeEntitlement() {
+      return request.resource.data.plan == 'free'
+        && request.resource.data.subscriptionStatus in ['active', 'trialing']
+        && request.resource.data.source == 'client_bootstrap';
+    }
+
+    // Permite copiar plan legacy existente (p. ej. Pro ya asignado) una sola vez.
+    function canMigrateLegacyEntitlement() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && legacyUserPlan().keys().hasAny(['plan'])
+        && request.resource.data.plan == legacyUserPlan().plan
+        && request.resource.data.subscriptionStatus == legacyUserPlan().subscriptionStatus
+        && request.resource.data.source == 'legacy_migration';
+    }
+
+    function validEntitlementCreate() {
+      return request.resource.data.keys().hasOnly(entitlementKeys())
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.plan in ['free', 'pro']
+        && request.resource.data.subscriptionStatus in ['active', 'trialing', 'canceled', 'past_due', 'incomplete']
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion == 1
+        && isString(request.resource.data.createdAt, 40)
+        && isString(request.resource.data.updatedAt, 40)
+        && isOptionalString(request.resource.data.trialEndsAt, 40)
+        && isString(request.resource.data.source, 40)
+        && (canBootstrapFreeEntitlement() || canMigrateLegacyEntitlement());
+    }
+
+    function validResumeKeys() {
+      return request.resource.data.keys().hasAll(['id', 'nombre', 'userId', 'updatedAt'])
+        && request.resource.data.userId == request.auth.uid
+        && isString(request.resource.data.id, 80)
+        && isString(request.resource.data.nombre, 200)
+        && isString(request.resource.data.updatedAt, 40)
+        && (!('perfil' in request.resource.data) || isString(request.resource.data.perfil, 5000))
+        && (!('fotoPath' in request.resource.data) || isOptionalString(request.resource.data.fotoPath, 600000))
+        && (!('fotoUrl' in request.resource.data) || isOptionalString(request.resource.data.fotoUrl, 2000))
+        && (!('fotoStoragePath' in request.resource.data) || isOptionalString(request.resource.data.fotoStoragePath, 500));
+    }
+
+    // Pro activo/trialing según entitlements (escrito por Stripe/Admin).
+    function isProUser(userId) {
+      return exists(/databases/$(database)/documents/entitlements/$(userId))
+        && get(/databases/$(database)/documents/entitlements/$(userId)).data.plan == 'pro'
+        && get(/databases/$(database)/documents/entitlements/$(userId)).data.subscriptionStatus
+            in ['active', 'trialing'];
+    }
+
+    // Contador materializado por Functions (`syncResumeUsage` / triggers).
+    // Free: exige doc usage y resumeCount < 3. Pro: sin tope en reglas.
+    function freeUnderResumeLimit(userId) {
+      return exists(/databases/$(database)/documents/usage/$(userId))
+        && get(/databases/$(database)/documents/usage/$(userId)).data.resumeCount is int
+        && get(/databases/$(database)/documents/usage/$(userId)).data.resumeCount < 3;
+    }
+
+    function canCreateResumeDoc(userId) {
+      return isProUser(userId) || freeUnderResumeLimit(userId);
+    }
+
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && validUserCreate();
+      allow update: if isOwner(userId) && validUserUpdate();
+      allow delete: if isOwner(userId);
 
       match /resumes/{docId} {
-        allow read, update, delete: if isOwner(userId);
-        allow create: if isOwner(userId)
-          && request.resource.data.userId == userId;
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && validResumeKeys()
+          && request.resource.data.id == docId
+          && canCreateResumeDoc(userId);
+        allow update: if isOwner(userId) && validResumeKeys()
+          && request.resource.data.id == docId
+          && resource.data.userId == userId;
+        allow delete: if isOwner(userId);
       }
+    }
+
+    // Solo Admin SDK escribe; el dueño puede leer su contador.
+    match /usage/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /entitlements/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && !exists(/databases/$(database)/documents/entitlements/$(userId))
+        && validEntitlementCreate();
+      allow update, delete: if false;
+    }
+
+    // Solo backend (Admin SDK). El cliente puede leer su propio registro.
+    match /billingCustomers/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // Idempotencia de webhooks Stripe — solo Admin SDK.
+    match /billingEvents/{eventId} {
+      allow read, write: if false;
     }
 
     match /plans/{planId} {

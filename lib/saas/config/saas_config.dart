@@ -11,6 +11,19 @@ class SaasConfig {
     defaultValue: '',
   );
 
+  /// Base URL de Cloud Functions (sin barra final).
+  /// Ejemplo: https://us-central1-cvmaker-saas-jb.cloudfunctions.net
+  static const String billingFunctionsBaseUrl = String.fromEnvironment(
+    'BILLING_FUNCTIONS_BASE_URL',
+    defaultValue: 'https://us-central1-cvmaker-saas-jb.cloudfunctions.net',
+  );
+
+  /// Si true, prioriza Checkout/Portal vía Functions; si falla y hay Payment Link, usa fallback.
+  static const bool billingBackendEnabled = bool.fromEnvironment(
+    'BILLING_BACKEND_ENABLED',
+    defaultValue: true,
+  );
+
   static const String supportEmail = 'boris13jb@gmail.com';
 }
 
@@ -22,7 +35,8 @@ enum SubscriptionPlan {
   final String id;
   final String label;
 
-  int get maxCvs => this == SubscriptionPlan.pro ? 999999 : SaasConfig.freeMaxCvs;
+  int get maxCvs =>
+      this == SubscriptionPlan.pro ? 999999 : SaasConfig.freeMaxCvs;
 
   bool get canAllDesigns => this == SubscriptionPlan.pro;
 

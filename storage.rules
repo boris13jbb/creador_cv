@@ -1,0 +1,35 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isImage() {
+      return request.resource != null
+        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+    }
+
+    function underMaxSize() {
+      return request.resource != null && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // Fotos de perfil de CV: users/{uid}/resumes/{resumeId}/photo.*
+    match /users/{userId}/resumes/{resumeId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+        && isImage()
+        && underMaxSize()
+        && fileName.matches('photo\\.(jpg|jpeg|png|webp)');
+      allow delete: if isOwner(userId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -30,7 +30,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _sending = false);
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Te enviamos un enlace para restablecer la contraseña')),
+        const SnackBar(
+          content: Text('Te enviamos un enlace para restablecer la contraseña'),
+        ),
       );
       Navigator.pop(context);
     } else {
@@ -67,7 +69,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             FilledButton(
               onPressed: _sending ? null : _submit,
               child: _sending
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Enviar enlace'),
             ),
             TextButton(

@@ -1,55 +1,61 @@
-import '../config/saas_config.dart';
-
+/// Perfil editable del usuario (sin privilegios de suscripción).
 class SaasUserProfile {
+  static const int currentSchemaVersion = 1;
+
   final String uid;
   final String email;
   final String displayName;
-  final SubscriptionPlan plan;
-  final String subscriptionStatus;
-  final DateTime? trialEndsAt;
+  final int schemaVersion;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Campos legacy (solo lectura migratoria). No se escriben en perfiles nuevos.
+  final String? legacyPlan;
+  final String? legacySubscriptionStatus;
+  final DateTime? legacyTrialEndsAt;
 
   const SaasUserProfile({
     required this.uid,
     required this.email,
     required this.displayName,
-    required this.plan,
-    this.subscriptionStatus = 'active',
-    this.trialEndsAt,
+    this.schemaVersion = currentSchemaVersion,
     required this.createdAt,
     required this.updatedAt,
+    this.legacyPlan,
+    this.legacySubscriptionStatus,
+    this.legacyTrialEndsAt,
   });
 
-  bool get isPro =>
-      plan == SubscriptionPlan.pro &&
-      (subscriptionStatus == 'active' || subscriptionStatus == 'trialing');
+  bool get hasLegacySubscriptionFields =>
+      legacyPlan != null || legacySubscriptionStatus != null;
 
-  int get maxCvs => plan.maxCvs;
-
-  Map<String, dynamic> toMap() => {
-        'uid': uid,
-        'email': email,
-        'displayName': displayName,
-        'plan': plan.id,
-        'subscriptionStatus': subscriptionStatus,
-        'trialEndsAt': trialEndsAt?.toIso8601String(),
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-      };
+  /// Mapa seguro para escritura cliente (sin plan/subscription).
+  Map<String, dynamic> toWritableMap() => {
+    'uid': uid,
+    'email': email,
+    'displayName': displayName,
+    'schemaVersion': schemaVersion,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+  };
 
   factory SaasUserProfile.fromMap(Map<String, dynamic> map) {
     return SaasUserProfile(
       uid: map['uid'] as String? ?? '',
       email: map['email'] as String? ?? '',
       displayName: map['displayName'] as String? ?? '',
-      plan: SubscriptionPlan.fromId(map['plan'] as String?),
-      subscriptionStatus: map['subscriptionStatus'] as String? ?? 'active',
-      trialEndsAt: map['trialEndsAt'] != null
+      schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 1,
+      createdAt:
+          DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      updatedAt:
+          DateTime.tryParse(map['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
+      legacyPlan: map['plan'] as String?,
+      legacySubscriptionStatus: map['subscriptionStatus'] as String?,
+      legacyTrialEndsAt: map['trialEndsAt'] != null
           ? DateTime.tryParse(map['trialEndsAt'] as String)
           : null,
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(map['updatedAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
 }

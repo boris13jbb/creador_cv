@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../../core/routing/app_router.dart';
 import '../../saas/providers/auth_controller.dart';
 import 'auth_scaffold.dart';
 
@@ -38,7 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
     if (!mounted) return;
     if (ok) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      context.go(AppRoutes.home);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(auth.error ?? 'No se pudo crear la cuenta')),
@@ -52,7 +54,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     return AuthScaffold(
       title: 'Crear cuenta',
-      subtitle: '14 días de prueba · Plan Free incluido',
+      subtitle: 'Crea tu cuenta · Plan Free incluido',
       child: Form(
         key: _formKey,
         child: Column(
@@ -65,7 +67,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 labelText: 'Nombre',
                 prefixIcon: Icon(Icons.person_outline),
               ),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Ingresa tu nombre' : null,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Ingresa tu nombre' : null,
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -89,7 +92,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 labelText: 'Contraseña',
                 prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
-                  icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  icon: Icon(
+                    _obscure
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
@@ -107,13 +114,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 labelText: 'Confirmar contraseña',
                 prefixIcon: const Icon(Icons.lock_person_outlined),
                 suffixIcon: IconButton(
-                  icon: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  icon: Icon(
+                    _obscureConfirm
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
                 ),
               ),
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Confirma tu contraseña';
-                if (v != _passwordCtrl.text) return 'Las contraseñas no coinciden';
+                if (v != _passwordCtrl.text) {
+                  return 'Las contraseñas no coinciden';
+                }
                 return null;
               },
             ),
@@ -121,11 +135,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
             FilledButton(
               onPressed: loading ? null : _submit,
               child: loading
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Registrarme'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => context.go(AppRoutes.login),
               child: const Text('Ya tengo cuenta'),
             ),
           ],
