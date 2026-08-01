@@ -92,9 +92,34 @@ GoRouter createAppRouter(AuthController auth) {
       ),
       ShellRoute(
         builder: (context, state, child) {
+          final auth = context.watch<AuthController>();
           if (auth.loading && auth.isAuthenticated) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
+            return Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        'Conectando con Firebase…',
+                        style: Theme.of(context).textTheme.titleMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Si tarda más de unos segundos, revisa Wi‑Fi/datos.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.inkMuted,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             );
           }
           return AppShell(child: child);

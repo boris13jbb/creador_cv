@@ -45,7 +45,16 @@ class AppShell extends StatelessWidget {
 
     if (layout == AppLayoutType.mobile) {
       return Scaffold(
-        body: child,
+        body: Column(
+          children: [
+            if (auth.offlineFallback && auth.error != null)
+              _OfflineBanner(
+                message: auth.error!,
+                onRetry: auth.retrySessionLoad,
+              ),
+            Expanded(child: child),
+          ],
+        ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: index.clamp(0, 4),
           onDestinationSelected: (i) => _go(context, i),
@@ -132,8 +141,52 @@ class AppShell extends StatelessWidget {
               isPro: auth.isPro,
             ),
           const VerticalDivider(width: 1),
-          Expanded(child: child),
+          Expanded(
+            child: Column(
+              children: [
+                if (auth.offlineFallback && auth.error != null)
+                  _OfflineBanner(
+                    message: auth.error!,
+                    onRetry: auth.retrySessionLoad,
+                  ),
+                Expanded(child: child),
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.amber.withValues(alpha: 0.15),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.wifi_off_outlined, color: AppColors.amber),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(message, style: const TextStyle(fontSize: 13)),
+              ),
+              TextButton(onPressed: onRetry, child: const Text('Reintentar')),
+            ],
+          ),
+        ),
       ),
     );
   }

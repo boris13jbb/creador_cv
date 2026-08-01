@@ -4,23 +4,11 @@ import 'package:provider/provider.dart';
 import '../../core/routing/app_router.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../features/templates/cv_template_thumbnail.dart';
 import '../../features/templates/cv_templates.dart';
 import '../../saas/providers/auth_controller.dart';
 
-IconData _templateIcon(IconDataHint hint) {
-  switch (hint) {
-    case IconDataHint.dashboard:
-      return Icons.dashboard_customize_outlined;
-    case IconDataHint.business:
-      return Icons.business_center_outlined;
-    case IconDataHint.palette:
-      return Icons.palette_outlined;
-    case IconDataHint.description:
-      return Icons.description_outlined;
-  }
-}
-
-/// Galería de plantillas con bloqueo Free/Pro y deep-link al editor.
+/// Galería de plantillas con miniaturas, bloqueo Free/Pro y deep-link al editor.
 class TemplatesGalleryScreen extends StatelessWidget {
   const TemplatesGalleryScreen({super.key});
 
@@ -28,6 +16,10 @@ class TemplatesGalleryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isPro = context.watch<AuthController>().isPro;
     final theme = Theme.of(context);
+    final layout = AppLayout.of(context);
+    final crossAxisCount = layout == AppLayoutType.mobile
+        ? 1
+        : (layout == AppLayoutType.tablet ? 2 : 3);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Plantillas')),
@@ -50,12 +42,11 @@ class TemplatesGalleryScreen extends StatelessWidget {
             Expanded(
               child: GridView.builder(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: AppLayout.of(context) == AppLayoutType.mobile
-                      ? 1
-                      : (AppLayout.of(context) == AppLayoutType.tablet ? 2 : 3),
+                  crossAxisCount: crossAxisCount,
                   mainAxisSpacing: AppSpacing.md,
                   crossAxisSpacing: AppSpacing.md,
-                  childAspectRatio: 1.25,
+                  // Más alto para dar espacio a la miniatura tipo página.
+                  childAspectRatio: crossAxisCount == 1 ? 0.78 : 0.72,
                 ),
                 itemCount: CvTemplates.all.length,
                 itemBuilder: (context, i) {
@@ -67,6 +58,7 @@ class TemplatesGalleryScreen extends StatelessWidget {
                     child: Material(
                       color: AppColors.surfaceCard,
                       borderRadius: BorderRadius.circular(AppRadii.lg),
+                      clipBehavior: Clip.antiAlias,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(AppRadii.lg),
                         onTap: () {
@@ -86,27 +78,33 @@ class TemplatesGalleryScreen extends StatelessWidget {
                                   ? AppColors.border
                                   : AppColors.emerald.withValues(alpha: 0.35),
                             ),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                AppColors.navy.withValues(alpha: 0.06),
-                                AppColors.emerald.withValues(alpha: 0.08),
-                              ],
-                            ),
                           ),
-                          padding: const EdgeInsets.all(AppSpacing.lg),
+                          padding: const EdgeInsets.all(AppSpacing.md),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Expanded(
+                                child: CvTemplateThumbnail(
+                                  designIndex: t.designIndex,
+                                  locked: locked,
+                                  accent: switch (t.designIndex) {
+                                    0 => AppColors.emerald,
+                                    1 => AppColors.navyMid,
+                                    2 => AppColors.navy,
+                                    _ => AppColors.amber,
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
                               Row(
                                 children: [
-                                  Icon(
-                                    _templateIcon(t.icon),
-                                    color: AppColors.navy,
-                                    size: 28,
+                                  Expanded(
+                                    child: Text(
+                                      t.name,
+                                      style: theme.textTheme.titleLarge
+                                          ?.copyWith(fontSize: 18),
+                                    ),
                                   ),
-                                  const Spacer(),
                                   if (t.requiresPro)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
@@ -119,9 +117,9 @@ class TemplatesGalleryScreen extends StatelessWidget {
                                         ),
                                         borderRadius: AppRadii.pill,
                                       ),
-                                      child: Text(
-                                        locked ? 'Pro' : 'Pro',
-                                        style: const TextStyle(
+                                      child: const Text(
+                                        'Pro',
+                                        style: TextStyle(
                                           color: AppColors.amber,
                                           fontWeight: FontWeight.w700,
                                           fontSize: 12,
@@ -130,9 +128,7 @@ class TemplatesGalleryScreen extends StatelessWidget {
                                     ),
                                 ],
                               ),
-                              const Spacer(),
-                              Text(t.name, style: theme.textTheme.titleLarge),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 2),
                               Text(
                                 locked
                                     ? 'Disponible en plan Pro'

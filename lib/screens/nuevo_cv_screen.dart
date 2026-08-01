@@ -11,6 +11,7 @@ import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/app_layout.dart';
 import '../features/resumes/data/resume_photo_service.dart';
+import '../features/templates/cv_template_thumbnail.dart';
 import '../features/templates/cv_templates.dart';
 import '../models/resume.dart';
 import '../saas/providers/auth_controller.dart';
@@ -485,20 +486,10 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
               spacing: 16,
               runSpacing: 16,
               children: [
-                _buildDesignOption(0, 'Diseño Clásico', Icons.list_alt, isPro),
-                _buildDesignOption(
-                  1,
-                  'Diseño Moderno',
-                  Icons.dashboard_customize,
-                  isPro,
-                ),
-                _buildDesignOption(
-                  2,
-                  'Diseño Ejecutivo',
-                  Icons.business_center,
-                  isPro,
-                ),
-                _buildDesignOption(3, 'Diseño Creativo', Icons.palette, isPro),
+                _buildDesignOption(0, 'Diseño Clásico', isPro),
+                _buildDesignOption(1, 'Diseño Moderno', isPro),
+                _buildDesignOption(2, 'Diseño Ejecutivo', isPro),
+                _buildDesignOption(3, 'Diseño Creativo', isPro),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
@@ -804,7 +795,6 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   Widget _buildDesignOption(
     int index,
     String title,
-    IconData icon,
     bool isPro,
   ) {
     final isSelected = _designIndex == index;
@@ -825,7 +815,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           borderRadius: BorderRadius.circular(AppRadii.md),
           onTap: () => _selectDesign(index),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+            padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppRadii.md),
               border: Border.all(
@@ -839,12 +829,15 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             ),
             child: Column(
               children: [
-                Icon(
-                  locked ? Icons.lock_outline : icon,
-                  color: isSelected
-                      ? AppTheme.secondaryGreen
-                      : (locked ? AppColors.amber : AppColors.inkMuted),
-                  size: 32,
+                CvTemplateThumbnail(
+                  designIndex: index,
+                  locked: locked,
+                  accent: switch (index) {
+                    0 => AppColors.emerald,
+                    1 => AppColors.navyMid,
+                    2 => AppColors.navy,
+                    _ => AppColors.amber,
+                  },
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -859,13 +852,13 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
                 ),
                 if (locked)
                   const Padding(
-                    padding: EdgeInsets.only(top: 4),
+                    padding: EdgeInsets.only(top: 2),
                     child: Text(
                       'Pro',
                       style: TextStyle(
                         fontSize: 11,
-                        fontWeight: FontWeight.w700,
                         color: AppColors.amber,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),

@@ -23,6 +23,8 @@ class AuthController extends ChangeNotifier {
     _bootstrap();
   }
 
+  static const Duration _cloudTimeout = Duration(seconds: 12);
+
   StreamSubscription<User?>? _sub;
   StreamSubscription<SaasUserProfile?>? _profileSub;
   StreamSubscription<UserEntitlement?>? _entitlementSub;
@@ -34,6 +36,7 @@ class AuthController extends ChangeNotifier {
   bool _loading = true;
   String? _error;
   bool _emailVerified = false;
+  bool _offlineFallback = false;
 
   User? get user => _user;
   AuthSession? get restSession =>
@@ -51,6 +54,8 @@ class AuthController extends ChangeNotifier {
   bool get usingRestSession =>
       _user == null &&
       (AuthService.instance.restSession ?? _restSession) != null;
+  /// true si perfil/plan se resolvieron sin nube (timeout/red).
+  bool get offlineFallback => _offlineFallback;
 
   String? get uid => _user?.uid ?? restSession?.uid;
   String? get email => _user?.email ?? restSession?.email;
@@ -59,17 +64,33 @@ class AuthController extends ChangeNotifier {
   int get maxCvs => _entitlement?.maxCvs ?? SaasConfig.freeMaxCvs;
 
   Future<void> _bootstrap() async {
-    if (saasUseRestBackend) {
-      _restSession = await AuthService.instance.restoreRestSession();
-    } else {
-      _restSession = AuthService.instance.restSession;
+    try {
+      if (saasUseRestBackend) {
+        _restSession = await AuthService.instance
+            .restoreRestSession()
+            .timeout(const Duration(seconds: 8));
+      } else {
+        _restSession = AuthService.instance.restSession;
+      }
+      await _onAuthChanged(AuthService.instance.currentUser);
+    } catch (e) {
+      _error = _friendlyNetworkMessage(e);
+      _loading = false;
+      notifyListeners();
     }
-    await _onAuthChanged(AuthService.instance.currentUser);
+  }
+
+  /// Reintenta cargar perfil/entitlements tras un fallo de red.
+  Future<void> retrySessionLoad() async {
+    _error = null;
+    _offlineFallback = false;
+    await _onAuthChanged(_user ?? AuthService.instance.currentUser);
   }
 
   Future<void> _onAuthChanged(User? user) async {
     _user = user;
     _error = null;
+    _offlineFallback = false;
     await _profileSub?.cancel();
     await _entitlementSub?.cancel();
     _profileSub = null;
@@ -90,33 +111,13 @@ class AuthController extends ChangeNotifier {
       if (user != null) {
         _restSession = null;
         _emailVerified = user.emailVerified;
-        _profile = await UserProfileService.instance.ensureProfile(user);
-        _entitlement = await EntitlementService.instance.ensureEntitlement(
-          uid: user.uid,
-          profile: _profile,
-        );
-        _profileSub = UserProfileService.instance.watchProfile(user.uid).listen(
-          (p) {
-            _profile = p;
-            notifyListeners();
-          },
-        );
-        _entitlementSub = EntitlementService.instance
-            .watchEntitlement(user.uid)
-            .listen((e) {
-              if (e != null) {
-                _entitlement = e;
-                notifyListeners();
-              }
-            });
-        unawaited(_syncResumeUsageBestEffort());
+        await _loadNativeIdentity(user);
       } else if (_restSession != null) {
         await _loadRestIdentity();
         unawaited(_syncResumeUsageBestEffort());
       }
     } catch (e) {
-      _error = e.toString().replaceFirst('Exception: ', '');
-      // Si el refresh token es inválido, cerrar sesión REST.
+      _error = _friendlyNetworkMessage(e);
       if (saasUseRestBackend && _isSessionInvalidError(_error!)) {
         await AuthService.instance.clearRestSession();
         _restSession = null;
@@ -129,6 +130,92 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Perfil + entitlements con timeout; si la nube no responde, modo limitado.
+  Future<void> _loadNativeIdentity(User user) async {
+    try {
+      _profile = await UserProfileService.instance
+          .ensureProfile(user)
+          .timeout(_cloudTimeout);
+      _entitlement = await EntitlementService.instance
+          .ensureEntitlement(uid: user.uid, profile: _profile)
+          .timeout(_cloudTimeout);
+      _profileSub = UserProfileService.instance.watchProfile(user.uid).listen(
+        (p) {
+          _profile = p;
+          notifyListeners();
+        },
+        onError: (_) {},
+      );
+      _entitlementSub = EntitlementService.instance
+          .watchEntitlement(user.uid)
+          .listen(
+            (e) {
+              if (e != null) {
+                _entitlement = e;
+                notifyListeners();
+              }
+            },
+            onError: (_) {},
+          );
+      unawaited(_syncResumeUsageBestEffort());
+    } on TimeoutException {
+      _applyOfflineFallback(user);
+    } catch (e) {
+      if (_isNetworkish(e)) {
+        _applyOfflineFallback(user, detail: e);
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  void _applyOfflineFallback(User user, {Object? detail}) {
+    _offlineFallback = true;
+    _error = _friendlyNetworkMessage(
+      detail ??
+          TimeoutException(
+            'No se pudo resolver firestore.googleapis.com',
+          ),
+    );
+    _profile ??= _profileFromAuthUser(user);
+    _entitlement ??= UserEntitlement.freeBootstrap(user.uid);
+  }
+
+  SaasUserProfile _profileFromAuthUser(User user) {
+    final now = DateTime.now();
+    return SaasUserProfile(
+      uid: user.uid,
+      email: user.email ?? '',
+      displayName:
+          user.displayName?.trim().isNotEmpty == true
+          ? user.displayName!.trim()
+          : (user.email?.split('@').first ?? 'Usuario'),
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  bool _isNetworkish(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socket') ||
+        s.contains('network') ||
+        s.contains('unavailable') ||
+        s.contains('unable to resolve') ||
+        s.contains('unknownhost') ||
+        s.contains('timeout') ||
+        s.contains('connection') ||
+        s.contains('failed host lookup');
+  }
+
+  String _friendlyNetworkMessage(Object e) {
+    if (_isNetworkish(e) || e is TimeoutException) {
+      return 'Sin conexión con Firebase (red/DNS). '
+          'Revisa Wi‑Fi o datos móviles e intenta de nuevo. '
+          'Si persiste, prueba otra red o desactiva VPN.';
+    }
+    return e.toString().replaceFirst('Exception: ', '');
+  }
+
   bool _isSessionInvalidError(String message) {
     final lower = message.toLowerCase();
     return lower.contains('sesión expiró') ||
@@ -139,9 +226,11 @@ class AuthController extends ChangeNotifier {
   /// Materializa `usage/{uid}` para límites Free en reglas (best-effort).
   Future<void> _syncResumeUsageBestEffort() async {
     try {
-      await UsageService.instance.syncResumeUsage();
+      await UsageService.instance.syncResumeUsage().timeout(
+        const Duration(seconds: 15),
+      );
     } catch (_) {
-      // Functions pueden no estar desplegadas aún; el create reintentará sync.
+      // Functions/red pueden fallar; el create reintentará sync.
     }
   }
 
@@ -149,7 +238,9 @@ class AuthController extends ChangeNotifier {
   Future<void> _loadRestIdentity() async {
     var session = _restSession!;
     try {
-      session = await AuthService.instance.ensureValidRestToken();
+      session = await AuthService.instance
+          .ensureValidRestToken()
+          .timeout(_cloudTimeout);
       _restSession = session;
     } catch (_) {
       rethrow;
@@ -162,14 +253,28 @@ class AuthController extends ChangeNotifier {
             ? session.email.split('@').first
             : 'Usuario');
 
-    _profile = await FirestoreRestClient.instance.ensureUserProfile(
-      session: session,
-      displayName: displayName,
-    );
-    _entitlement = await EntitlementService.instance.ensureEntitlementRest(
-      session: session,
-      profile: _profile,
-    );
+    try {
+      _profile = await FirestoreRestClient.instance
+          .ensureUserProfile(session: session, displayName: displayName)
+          .timeout(_cloudTimeout);
+      _entitlement = await EntitlementService.instance
+          .ensureEntitlementRest(session: session, profile: _profile)
+          .timeout(_cloudTimeout);
+    } on TimeoutException {
+      _offlineFallback = true;
+      _error = _friendlyNetworkMessage(
+        TimeoutException('Timeout REST Firestore'),
+      );
+      final now = DateTime.now();
+      _profile ??= SaasUserProfile(
+        uid: session.uid,
+        email: session.email,
+        displayName: displayName,
+        createdAt: now,
+        updatedAt: now,
+      );
+      _entitlement ??= UserEntitlement.freeBootstrap(session.uid);
+    }
   }
 
   Future<bool> signIn({required String email, required String password}) async {
