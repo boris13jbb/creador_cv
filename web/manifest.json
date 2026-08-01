@@ -8,7 +8,10 @@
     "description": "Crea, edita y exporta currículums profesionales en PDF.",
     "orientation": "any",
     "prefer_related_applications": false,
-    "categories": ["productivity", "business"],
+    "categories": [
+        "productivity",
+        "business"
+    ],
     "lang": "es",
     "icons": [
         {
