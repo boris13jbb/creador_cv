@@ -119,10 +119,18 @@ class _PricingScreenState extends State<PricingScreen> {
             const SizedBox(height: AppSpacing.sm),
             Text(
               'Plan actual: ${auth.plan.label}'
-              '${auth.entitlement?.subscriptionStatus != null ? ' (${auth.entitlement!.subscriptionStatus})' : ''}',
+              '${auth.entitlement?.subscriptionStatus != null ? ' (${auth.entitlement!.subscriptionStatus})' : ''}'
+              '${auth.isAdminGrant ? ' · cortesía admin' : ''}',
               style: theme.textTheme.bodyLarge,
             ),
-            if (auth.entitlement?.source == 'stripe') ...[
+            if (auth.isAdminGrant) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'Acceso Pro otorgado por el administrador'
+                '${auth.entitlement?.grantExpiresAt != null ? ' (hasta ${_fmt(auth.entitlement!.grantExpiresAt!)})' : ''}.',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ] else if (auth.entitlement?.source == 'stripe') ...[
               const SizedBox(height: AppSpacing.xs),
               Text(
                 'Suscripción gestionada por Stripe.',

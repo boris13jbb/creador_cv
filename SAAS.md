@@ -6,6 +6,7 @@
 - Firebase Storage (fotos de perfil)
 - Planes Free / Pro (derechos en `entitlements/{uid}`)
 - Stripe Checkout + webhook + Customer Portal ([docs/STRIPE_BILLING.md](docs/STRIPE_BILLING.md))
+- Superadmin: grants Pro de cortesía + panel `super_admin/` ([docs/SUPER_ADMIN.md](docs/SUPER_ADMIN.md))
 
 ## Observabilidad y pruebas
 - [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — Sentry opcional vía `SENTRY_DSN`
@@ -29,6 +30,7 @@ Colecciones clave:
 - `users/{uid}/resumes/{id}` — CVs del usuario
 - `billingCustomers/{uid}` — mapeo Stripe customer (solo backend)
 - `billingEvents/{eventId}` — idempotencia webhook (solo backend)
+- `adminAuditLogs/{id}` — auditoría de grants superadmin (solo backend)
 
 ## Desplegar (solo con autorización)
 ```powershell

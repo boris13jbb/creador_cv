@@ -3,8 +3,10 @@ import {
   mapSubscriptionToEntitlement,
   type EntitlementWrite,
 } from "./entitlements";
+import {isActiveAdminGrant} from "./adminGrants";
 import {isAlreadyExistsError} from "./idempotency";
 import * as admin from "firebase-admin";
+import {logger} from "firebase-functions";
 import Stripe from "stripe";
 
 const db = () => admin.firestore();
@@ -61,12 +63,45 @@ export async function uidFromCustomerId(
 export async function writeEntitlement(data: EntitlementWrite): Promise<void> {
   const ref = db().collection("entitlements").doc(data.uid);
   const existing = await ref.get();
+  const prev = existing.data() as Record<string, unknown> | undefined;
+
+  // Un grant activo de superadmin no se degrada por cancelación/webhook Stripe.
+  if (
+    data.source === "stripe" &&
+    data.plan === "free" &&
+    isActiveAdminGrant(prev)
+  ) {
+    logger.info("Preservando admin_grant frente a downgrade Stripe", {
+      uid: data.uid,
+    });
+    await ref.set(
+      {
+        stripeCustomerId: data.stripeCustomerId ?? prev?.stripeCustomerId ?? null,
+        stripeSubscriptionId:
+          data.stripeSubscriptionId ?? prev?.stripeSubscriptionId ?? null,
+        stripePriceId: data.stripePriceId ?? prev?.stripePriceId ?? null,
+        updatedAt: data.updatedAt,
+      },
+      {merge: true},
+    );
+    return;
+  }
+
   const payload: Record<string, unknown> = {
     ...data,
     createdAt: existing.exists
       ? (existing.data()?.createdAt ?? data.updatedAt)
       : data.updatedAt,
   };
+
+  // Si Stripe activa Pro de pago, limpia metadatos de cortesía.
+  if (data.source === "stripe" && data.plan === "pro") {
+    payload.grantedBy = null;
+    payload.grantedAt = null;
+    payload.grantNote = null;
+    payload.grantExpiresAt = null;
+  }
+
   await ref.set(payload, {merge: true});
 }
 

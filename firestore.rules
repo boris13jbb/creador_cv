@@ -170,6 +170,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Auditoría de grants superadmin — solo Admin SDK / Functions.
+    match /adminAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+
     match /plans/{planId} {
       allow read: if isSignedIn();
       allow write: if false;

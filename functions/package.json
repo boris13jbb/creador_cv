@@ -10,7 +10,7 @@
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions,firestore,auth",
     "deploy": "firebase deploy --only functions",
-    "test": "npm run build && node --test lib/entitlements.test.js lib/idempotency.test.js lib/planLimits.test.js",
+    "test": "npm run build && node --test lib/entitlements.test.js lib/idempotency.test.js lib/planLimits.test.js lib/adminGrants.test.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

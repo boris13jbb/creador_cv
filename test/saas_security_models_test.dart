@@ -58,6 +58,38 @@ void main() {
       expect(copy.subscriptionStatus, original.subscriptionStatus);
       expect(copy.schemaVersion, 1);
     });
+
+    test('admin_grant vigente es Pro de cortesía', () {
+      final now = DateTime.now();
+      final e = UserEntitlement(
+        uid: 'u1',
+        plan: SubscriptionPlan.pro,
+        subscriptionStatus: 'active',
+        source: 'admin_grant',
+        grantedBy: 'admin',
+        grantedAt: now,
+        grantExpiresAt: now.add(const Duration(days: 30)),
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(e.isAdminGrant, isTrue);
+      expect(e.isPro, isTrue);
+    });
+
+    test('admin_grant expirado no es Pro', () {
+      final now = DateTime.now();
+      final e = UserEntitlement(
+        uid: 'u1',
+        plan: SubscriptionPlan.pro,
+        subscriptionStatus: 'active',
+        source: 'admin_grant',
+        grantExpiresAt: now.subtract(const Duration(days: 1)),
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(e.isAdminGrant, isFalse);
+      expect(e.isPro, isFalse);
+    });
   });
 
   group('SaasUserProfile', () {

@@ -10,6 +10,7 @@
 | `usage/{uid}` | Dueño | **Denegado** (solo Admin SDK / Functions) |
 | `billingCustomers/{uid}` | Dueño | **Denegado** (solo Admin SDK) |
 | `billingEvents/{eventId}` | Nadie | **Denegado** (idempotencia webhook Stripe) |
+| `adminAuditLogs/{id}` | Nadie | **Denegado** (auditoría superadmin; solo Functions) |
 
 Los campos `plan` y `subscriptionStatus` **ya no se escriben** desde el cliente en `users`.
 
@@ -76,5 +77,8 @@ Borra resumes + perfil `users` + cuenta Auth.
 Ya **no** se debe editar `users/{uid}.plan` desde la consola como flujo oficial.  
 Flujo correcto (Fase 5): webhook Stripe → Admin SDK escribe `entitlements/{uid}`.
 Ver [STRIPE_BILLING.md](STRIPE_BILLING.md).
+
+Pro de cortesía (sin Stripe): Functions `adminGrantPro` con claim `superadmin`.
+Ver [SUPER_ADMIN.md](SUPER_ADMIN.md).
 
 Migración temporal de Pro legacy: al abrir la app, si `users` aún tiene `plan: pro` y no existe entitlement, el cliente puede crear `entitlements` con `source: legacy_migration` **una sola vez** (reglas lo validan contra el doc legacy).

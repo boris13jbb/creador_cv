@@ -12,6 +12,10 @@ class UserEntitlement {
   final int schemaVersion;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? grantedBy;
+  final DateTime? grantedAt;
+  final String? grantNote;
+  final DateTime? grantExpiresAt;
 
   const UserEntitlement({
     required this.uid,
@@ -22,11 +26,30 @@ class UserEntitlement {
     this.schemaVersion = currentSchemaVersion,
     required this.createdAt,
     required this.updatedAt,
+    this.grantedBy,
+    this.grantedAt,
+    this.grantNote,
+    this.grantExpiresAt,
   });
+
+  /// Pro de cortesía otorgado por superadmin (aún vigente).
+  bool get isAdminGrant {
+    if (source != 'admin_grant') return false;
+    if (plan != SubscriptionPlan.pro) return false;
+    if (subscriptionStatus != 'active') return false;
+    if (grantExpiresAt != null && !grantExpiresAt!.isAfter(DateTime.now())) {
+      return false;
+    }
+    return true;
+  }
 
   bool get isPro {
     if (plan != SubscriptionPlan.pro) return false;
-    return subscriptionStatus == 'active' || subscriptionStatus == 'trialing';
+    if (subscriptionStatus != 'active' && subscriptionStatus != 'trialing') {
+      return false;
+    }
+    if (source == 'admin_grant') return isAdminGrant;
+    return true;
   }
 
   /// Trial de marketing: solo aplica mientras el estado sea trialing y no haya expirado.
@@ -47,6 +70,11 @@ class UserEntitlement {
     'schemaVersion': schemaVersion,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
+    if (grantedBy != null) 'grantedBy': grantedBy,
+    if (grantedAt != null) 'grantedAt': grantedAt!.toIso8601String(),
+    if (grantNote != null) 'grantNote': grantNote,
+    if (grantExpiresAt != null)
+      'grantExpiresAt': grantExpiresAt!.toIso8601String(),
   };
 
   factory UserEntitlement.freeBootstrap(String uid, {DateTime? trialEndsAt}) {
@@ -99,6 +127,14 @@ class UserEntitlement {
       updatedAt:
           DateTime.tryParse(map['updatedAt'] as String? ?? '') ??
           DateTime.now(),
+      grantedBy: map['grantedBy'] as String?,
+      grantedAt: map['grantedAt'] != null
+          ? DateTime.tryParse(map['grantedAt'] as String)
+          : null,
+      grantNote: map['grantNote'] as String?,
+      grantExpiresAt: map['grantExpiresAt'] != null
+          ? DateTime.tryParse(map['grantExpiresAt'] as String)
+          : null,
     );
   }
 }

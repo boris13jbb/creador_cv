@@ -50,6 +50,9 @@ class AuthController extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
   bool get isPro => _entitlement?.isPro ?? false;
+
+  /// Pro otorgado por superadmin (sin Stripe).
+  bool get isAdminGrant => _entitlement?.isAdminGrant ?? false;
   bool get emailVerified => _emailVerified;
   bool get usingRestSession =>
       _user == null &&

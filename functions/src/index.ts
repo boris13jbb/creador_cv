@@ -29,3 +29,12 @@ export {
   canCreateResume,
   isProEntitlement,
 } from "./planLimits";
+
+/** Panel superadmin: grants Pro de cortesía + monitoreo (claim superadmin). */
+export {
+  adminGrantPro,
+  adminRevokeGrant,
+  adminGetUser,
+  adminListUsers,
+  adminGetMetrics,
+} from "./adminApi";
