@@ -792,11 +792,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     );
   }
 
-  Widget _buildDesignOption(
-    int index,
-    String title,
-    bool isPro,
-  ) {
+  Widget _buildDesignOption(int index, String title, bool isPro) {
     final isSelected = _designIndex == index;
     final locked = CvTemplates.requiresPro(index) && !isPro;
     final width = MediaQuery.sizeOf(context).width;

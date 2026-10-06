@@ -68,10 +68,7 @@ class CvTemplateThumbnail extends StatelessWidget {
 }
 
 class _SkeletonLine extends StatelessWidget {
-  const _SkeletonLine({
-    required this.widthFactor,
-    this.height = 3,
-  });
+  const _SkeletonLine({required this.widthFactor, this.height = 3});
 
   final double widthFactor;
   final double height;
@@ -93,10 +90,7 @@ class _SkeletonLine extends StatelessWidget {
 }
 
 class _SectionBlock extends StatelessWidget {
-  const _SectionBlock({
-    required this.accent,
-    this.lines = 2,
-  });
+  const _SectionBlock({required this.accent, this.lines = 2});
 
   final Color accent;
   final int lines;

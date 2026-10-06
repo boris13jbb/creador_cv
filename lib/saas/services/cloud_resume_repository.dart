@@ -62,9 +62,7 @@ class CloudResumeRepository implements ResumeRepository {
     try {
       final snap = await UsageService.instance.syncResumeUsage();
       if (!snap.canCreate) {
-        throw AppException(
-          PlanLimits.limitReachedMessage(isPro: false),
-        );
+        throw AppException(PlanLimits.limitReachedMessage(isPro: false));
       }
       return;
     } on AppException {
@@ -120,9 +118,7 @@ class CloudResumeRepository implements ResumeRepository {
       final exists = actuales.any((r) => r.id == resume.id);
       final max = _maxCvs;
       if (!exists && actuales.length >= max) {
-        throw AppException(
-          PlanLimits.limitReachedMessage(isPro: _isPro),
-        );
+        throw AppException(PlanLimits.limitReachedMessage(isPro: _isPro));
       }
       if (!exists) {
         await _assertServerAllowsNewResume();
@@ -141,9 +137,7 @@ class CloudResumeRepository implements ResumeRepository {
     final existentesSnap = await _col.limit(_maxCvs + 1).get();
     final exists = existentesSnap.docs.any((d) => d.id == resume.id);
     if (!exists && existentesSnap.size >= _maxCvs) {
-      throw AppException(
-        PlanLimits.limitReachedMessage(isPro: _isPro),
-      );
+      throw AppException(PlanLimits.limitReachedMessage(isPro: _isPro));
     }
     if (!exists) {
       await _assertServerAllowsNewResume();
