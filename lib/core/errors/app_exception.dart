@@ -67,8 +67,9 @@ class ErrorMapper {
     if (lower.contains('invalid-argument') ||
         lower.contains('invalid argument') ||
         lower.contains('invalid field')) {
+      // Mensaje corto; el detalle completo va a debugPrint en el repositorio.
       return const AppException(
-        'No se pudo guardar el CV (datos inválidos). Revisa e inténtalo de nuevo.',
+        'No se pudo guardar el CV. Revisa la conexión e inténtalo de nuevo.',
         code: 'invalid-argument',
       );
     }

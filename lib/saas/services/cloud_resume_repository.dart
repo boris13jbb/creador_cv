@@ -153,14 +153,6 @@ class CloudResumeRepository implements ResumeRepository {
     if (user == null) {
       throw const AuthAppException('Debes iniciar sesión para continuar.');
     }
-    final existentesSnap = await _col.limit(_maxCvs + 1).get();
-    final exists = existentesSnap.docs.any((d) => d.id == resume.id);
-    if (!exists && existentesSnap.size >= _maxCvs) {
-      throw AppException(PlanLimits.limitReachedMessage(isPro: _isPro));
-    }
-    if (!exists) {
-      await _assertServerAllowsNewResume();
-    }
 
     final docId = resume.id.trim();
     if (docId.isEmpty || docId.contains('/')) {
@@ -168,29 +160,47 @@ class CloudResumeRepository implements ResumeRepository {
         'Identificador de CV inválido. Cierra y vuelve a abrir el CV.',
       );
     }
-    if (_uid.isEmpty) {
-      throw const AuthAppException('Debes iniciar sesión para continuar.');
+
+    // Existencia real del documento (no un limit arbitrario).
+    final existingSnap = await _col.doc(docId).get();
+    final exists = existingSnap.exists;
+
+    if (!exists) {
+      final countSnap = await _col.limit(_maxCvs + 1).get();
+      if (countSnap.size >= _maxCvs) {
+        throw AppException(PlanLimits.limitReachedMessage(isPro: _isPro));
+      }
+      await _assertServerAllowsNewResume();
     }
 
-    // Quitar nulls antes de añadir FieldValue: evita invalid-argument en Android.
-    final data = stripNullsForFirestore(resume.toFirestoreMap(userId: _uid));
+    final uid = user.uid;
+    // Payload solo con tipos JSON-safe. Sin FieldValue.delete/serverTimestamp:
+    // en Android provocaban cloud_firestore/invalid-argument al crear/editar.
+    final data = stripNullsForFirestore(resume.toFirestoreMap(userId: uid));
     data['id'] = docId;
-    data['userId'] = _uid;
-    // FieldValue.delete() en CREATE de documento nuevo provoca invalid-argument.
-    // Solo borrar fotoPath legacy al actualizar un CV que ya existe.
-    if (exists && !data.containsKey('fotoPath')) {
-      data['fotoPath'] = FieldValue.delete();
+    data['userId'] = uid;
+    final nowIso = DateTime.now().toIso8601String();
+    data['updatedAt'] = nowIso;
+    data['updatedAtServer'] = nowIso;
+    if (!exists) {
+      data['createdAtServer'] = nowIso;
+      data.putIfAbsent('createdAt', () => nowIso);
     }
-    data['updatedAtServer'] = FieldValue.serverTimestamp();
-    if (!exists || resume.createdAt == null) {
-      data['createdAtServer'] = FieldValue.serverTimestamp();
-    }
+
     try {
       await _col.doc(docId).set(data, SetOptions(merge: true));
-    } catch (e, st) {
-      debugPrint('insertarResume Firestore error: $e');
+    } on FirebaseException catch (e, st) {
+      debugPrint(
+        'insertarResume FirebaseException code=${e.code} message=${e.message}',
+      );
       debugPrint('insertarResume stack: $st');
-      debugPrint('insertarResume keys: ${data.keys.toList()} exists=$exists');
+      debugPrint(
+        'insertarResume keys=${data.keys.toList()} exists=$exists docId=$docId',
+      );
+      rethrow;
+    } catch (e, st) {
+      debugPrint('insertarResume error: $e');
+      debugPrint('insertarResume stack: $st');
       rethrow;
     }
   }
