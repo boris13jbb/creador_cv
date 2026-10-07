@@ -57,6 +57,7 @@ class AuthController extends ChangeNotifier {
   bool get usingRestSession =>
       _user == null &&
       (AuthService.instance.restSession ?? _restSession) != null;
+
   /// true si perfil/plan se resolvieron sin nube (timeout/red).
   bool get offlineFallback => _offlineFallback;
 
@@ -69,9 +70,9 @@ class AuthController extends ChangeNotifier {
   Future<void> _bootstrap() async {
     try {
       if (saasUseRestBackend) {
-        _restSession = await AuthService.instance
-            .restoreRestSession()
-            .timeout(const Duration(seconds: 8));
+        _restSession = await AuthService.instance.restoreRestSession().timeout(
+          const Duration(seconds: 8),
+        );
       } else {
         _restSession = AuthService.instance.restSession;
       }
@@ -142,24 +143,20 @@ class AuthController extends ChangeNotifier {
       _entitlement = await EntitlementService.instance
           .ensureEntitlement(uid: user.uid, profile: _profile)
           .timeout(_cloudTimeout);
-      _profileSub = UserProfileService.instance.watchProfile(user.uid).listen(
-        (p) {
-          _profile = p;
-          notifyListeners();
-        },
-        onError: (_) {},
-      );
+      _profileSub = UserProfileService.instance.watchProfile(user.uid).listen((
+        p,
+      ) {
+        _profile = p;
+        notifyListeners();
+      }, onError: (_) {});
       _entitlementSub = EntitlementService.instance
           .watchEntitlement(user.uid)
-          .listen(
-            (e) {
-              if (e != null) {
-                _entitlement = e;
-                notifyListeners();
-              }
-            },
-            onError: (_) {},
-          );
+          .listen((e) {
+            if (e != null) {
+              _entitlement = e;
+              notifyListeners();
+            }
+          }, onError: (_) {});
       unawaited(_syncResumeUsageBestEffort());
     } on TimeoutException {
       _applyOfflineFallback(user);
@@ -176,9 +173,7 @@ class AuthController extends ChangeNotifier {
     _offlineFallback = true;
     _error = _friendlyNetworkMessage(
       detail ??
-          TimeoutException(
-            'No se pudo resolver firestore.googleapis.com',
-          ),
+          TimeoutException('No se pudo resolver firestore.googleapis.com'),
     );
     _profile ??= _profileFromAuthUser(user);
     _entitlement ??= UserEntitlement.freeBootstrap(user.uid);
@@ -189,8 +184,7 @@ class AuthController extends ChangeNotifier {
     return SaasUserProfile(
       uid: user.uid,
       email: user.email ?? '',
-      displayName:
-          user.displayName?.trim().isNotEmpty == true
+      displayName: user.displayName?.trim().isNotEmpty == true
           ? user.displayName!.trim()
           : (user.email?.split('@').first ?? 'Usuario'),
       createdAt: now,
@@ -241,9 +235,9 @@ class AuthController extends ChangeNotifier {
   Future<void> _loadRestIdentity() async {
     var session = _restSession!;
     try {
-      session = await AuthService.instance
-          .ensureValidRestToken()
-          .timeout(_cloudTimeout);
+      session = await AuthService.instance.ensureValidRestToken().timeout(
+        _cloudTimeout,
+      );
       _restSession = session;
     } catch (_) {
       rethrow;

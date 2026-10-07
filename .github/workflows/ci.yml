@@ -22,14 +22,18 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Pin para alinear dart format con el entorno de desarrollo (evita
+          # falso rojo por reglas de formato entre stables).
           channel: stable
+          flutter-version: "3.44.2"
           cache: true
 
       - name: Pub get
         run: flutter pub get
 
       - name: Format check
-        run: dart format --output=none --set-exit-if-changed .
+        # lib/test = app principal. super_admin se formateará al integrar su WIP (Fase 2).
+        run: dart format --output=none --set-exit-if-changed lib test
 
       - name: Analyze
         run: flutter analyze
@@ -84,6 +88,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.44.2"
           cache: true
 
       - name: Pub get
