@@ -112,5 +112,68 @@ void main() {
       expect(out['fotoUrl'], 'https://cdn/x.jpg');
       expect(out['ocultarFoto'], isA<bool>());
     });
+
+    test('CV antiguo sin projects/certifications/aptitudes carga vacío', () {
+      final map = {
+        'id': 'legacy',
+        'nombre': 'Muñoz Peña',
+        'perfil': 'Educación',
+        'datosPersonales': <Map<String, dynamic>>[],
+        'competencias': <Map<String, dynamic>>[],
+        'idiomas': <Map<String, dynamic>>[],
+        'experiencia': <Map<String, dynamic>>[],
+        'formacion': <Map<String, dynamic>>[],
+      };
+      final r = Resume.fromMap(map);
+      expect(r.projects, isEmpty);
+      expect(r.certifications, isEmpty);
+      expect(r.aptitudes, isEmpty);
+      expect(r.ocultarProyectos, isFalse);
+    });
+
+    test('CV nuevo serializa y deserializa secciones profesionales', () {
+      final r = Resume(
+        id: 'new-1',
+        nombre: 'Gestión',
+        perfil: 'Comunicación',
+        datosPersonales: const [],
+        competencias: const [],
+        idiomas: const [],
+        experiencia: const [],
+        formacion: const [],
+        projects: const [
+          Project(
+            id: 'p1',
+            name: 'CotizaPro',
+            description: 'Cotizaciones',
+            technologies: ['Flutter'],
+            startDate: '2025',
+            isOngoing: true,
+          ),
+        ],
+        certifications: const [
+          Certification(
+            id: 'c1',
+            name: 'Prompt Engineering',
+            institution: 'ECN',
+            date: '2025',
+          ),
+        ],
+        aptitudes: const [
+          Aptitude(id: 'a1', name: 'Trabajo en equipo'),
+          Aptitude(id: 'a2', name: 'Adaptabilidad', level: 5),
+        ],
+      );
+      final out = r.toFirestoreMap(userId: 'u');
+      final back = Resume.fromMap(Map<String, dynamic>.from(out));
+      expect(back.projects.single.name, 'CotizaPro');
+      expect(back.certifications.single.institution, 'ECN');
+      expect(back.aptitudes.map((a) => a.name), [
+        'Trabajo en equipo',
+        'Adaptabilidad',
+      ]);
+      expect(out['projects'], isA<List>());
+      expect(out['schemaVersion'], 3);
+    });
   });
 }

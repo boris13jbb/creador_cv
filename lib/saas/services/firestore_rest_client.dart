@@ -106,9 +106,14 @@ class FirestoreRestClient {
     required AuthSession session,
     required Resume resume,
   }) async {
+    final docId = resume.id.trim();
+    if (docId.isEmpty || docId.contains('/')) {
+      throw Exception('Identificador de CV inválido.');
+    }
     final data = resume.toFirestoreMap(userId: session.uid);
+    data['id'] = docId;
     final res = await http.patch(
-      _doc(session.uid, resume.id),
+      _doc(session.uid, docId),
       headers: _headers(session.idToken),
       body: jsonEncode({'fields': _toFields(data)}),
     );
@@ -141,7 +146,9 @@ class FirestoreRestClient {
       final idFromPath = name.split('/').isNotEmpty
           ? name.split('/').last
           : null;
-      map.putIfAbsent('id', () => idFromPath ?? '');
+      if (idFromPath != null && idFromPath.isNotEmpty) {
+        map['id'] = idFromPath;
+      }
       final updatedAt = map['updatedAt']?.toString() ?? '';
       return MapEntry(updatedAt, Resume.fromMap(map));
     }).toList();

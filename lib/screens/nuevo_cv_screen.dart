@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +9,7 @@ import '../core/errors/app_exception.dart';
 import '../core/routing/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
+import '../core/utils/url_validators.dart';
 import '../core/widgets/app_layout.dart';
 import '../features/resumes/data/resume_photo_service.dart';
 import '../features/templates/cv_template_thumbnail.dart';
@@ -63,12 +64,18 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   bool _ocultarFormacion = false;
   bool _ocultarCompetencias = false;
   bool _ocultarIdiomas = false;
+  bool _ocultarProyectos = false;
+  bool _ocultarCertificaciones = false;
+  bool _ocultarAptitudes = false;
 
   final List<PersonalData> _datosPersonales = [];
   final List<Experience> _experiencia = [];
   final List<Education> _formacion = [];
   final List<Skill> _competencias = [];
   final List<Skill> _idiomas = [];
+  final List<Project> _projects = [];
+  final List<Certification> _certifications = [];
+  final List<Aptitude> _aptitudes = [];
 
   /// Id estable tras el primer guardado (permite autosave en CVs nuevos).
   String? _persistedId;
@@ -123,6 +130,9 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
       _ocultarFormacion = r.ocultarFormacion;
       _ocultarCompetencias = r.ocultarCompetencias;
       _ocultarIdiomas = r.ocultarIdiomas;
+      _ocultarProyectos = r.ocultarProyectos;
+      _ocultarCertificaciones = r.ocultarCertificaciones;
+      _ocultarAptitudes = r.ocultarAptitudes;
 
       _loadExistingPhoto(r);
       _datosPersonales.clear();
@@ -135,6 +145,15 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
       _experiencia.addAll(r.experiencia);
       _formacion.clear();
       _formacion.addAll(r.formacion);
+      _projects
+        ..clear()
+        ..addAll(r.projects);
+      _certifications
+        ..clear()
+        ..addAll(r.certifications);
+      _aptitudes
+        ..clear()
+        ..addAll(r.aptitudes);
     } else {
       final requested = widget.initialDesignIndex ?? 0;
       _designIndex = CvTemplates.byIndex(requested).designIndex;
@@ -265,6 +284,9 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
       idiomas: _idiomas,
       experiencia: _experiencia,
       formacion: _formacion,
+      projects: List<Project>.from(_projects),
+      certifications: List<Certification>.from(_certifications),
+      aptitudes: List<Aptitude>.from(_aptitudes),
       colorHex: _colorSeleccionado.toARGB32(),
       designIndex: _designIndex,
       ocultarFoto: _ocultarFoto,
@@ -273,6 +295,9 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
       ocultarFormacion: _ocultarFormacion,
       ocultarCompetencias: _ocultarCompetencias,
       ocultarIdiomas: _ocultarIdiomas,
+      ocultarProyectos: _ocultarProyectos,
+      ocultarCertificaciones: _ocultarCertificaciones,
+      ocultarAptitudes: _ocultarAptitudes,
       createdAt: widget.resumeExistente?.createdAt,
     );
   }
@@ -319,7 +344,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   }
 
   Future<void> _guardarCv() async {
-    if (!_formKey.currentState!.validate()) return;
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) return;
     _autosaveTimer?.cancel();
     setState(() => _uploadingPhoto = true);
     try {
@@ -337,7 +363,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           _autosaveError = null;
         }
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('guardarCv error: $e\n$st');
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -408,85 +435,135 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     final desktop = AppLayout.of(context) == AppLayoutType.desktop;
     final isPro = context.watch<AuthController>().isPro;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.resumeExistente != null || _persistedId != null
-              ? 'Editar CV'
-              : 'Crear CV Profesional',
-        ),
-        actions: [
-          if (_autosaveLabel.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Center(
-                child: Text(
-                  _autosaveLabel,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _autosaveStatus == _AutosaveStatus.error
-                        ? AppColors.danger
-                        : AppColors.inkMuted,
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          if (!_uploadingPhoto) {
+            _guardarCv();
+          }
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              widget.resumeExistente != null || _persistedId != null
+                  ? 'Editar CV'
+                  : 'Crear CV Profesional',
+            ),
+            actions: [
+              if (_autosaveLabel.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.sizeOf(context).width * 0.32,
+                      ),
+                      child: Text(
+                        _autosaveLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _autosaveStatus == _AutosaveStatus.error
+                              ? AppColors.danger
+                              : AppColors.inkMuted,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
+              Semantics(
+                label: 'Guardar CV',
+                button: true,
+                enabled: !_uploadingPhoto,
+                onTap: _uploadingPhoto
+                    ? null
+                    : () {
+                        _guardarCv();
+                      },
+                child: IconButton(
+                  icon: const Icon(Icons.save),
+                  tooltip: 'Guardar CV',
+                  onPressed: _uploadingPhoto ? null : _guardarCv,
+                ),
               ),
-            ),
-          IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: 'Guardar CV',
-            onPressed: _uploadingPhoto ? null : _guardarCv,
+              Semantics(
+                label: 'Ver PDF',
+                button: true,
+                enabled: !_uploadingPhoto,
+                onTap: _uploadingPhoto
+                    ? null
+                    : () {
+                        _generarPreview();
+                      },
+                child: IconButton(
+                  icon: const Icon(Icons.picture_as_pdf),
+                  tooltip: 'Ver PDF',
+                  onPressed: _uploadingPhoto ? null : _generarPreview,
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'Ver PDF',
-            onPressed: _uploadingPhoto ? null : _generarPreview,
+          body: Form(
+            key: _formKey,
+            child: desktop
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(flex: 3, child: _buildFormScroll(isPro)),
+                      const VerticalDivider(width: 1),
+                      SizedBox(width: 320, child: _buildDesktopSummaryPanel()),
+                    ],
+                  )
+                : _buildFormScroll(isPro),
           ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: desktop
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(flex: 3, child: _buildFormScroll(isPro)),
-                  const VerticalDivider(width: 1),
-                  SizedBox(width: 320, child: _buildDesktopSummaryPanel()),
-                ],
-              )
-            : _buildFormScroll(isPro),
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 16, right: 16),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FloatingActionButton(
-              heroTag: 'btnGuardar',
-              onPressed: _uploadingPhoto ? null : _guardarCv,
-              tooltip: 'Guardar CV',
-              backgroundColor: AppTheme.secondaryGreen,
-              child: _uploadingPhoto
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save, color: Colors.white),
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 16, right: 16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Semantics(
+                  label: 'Guardar CV',
+                  button: true,
+                  enabled: !_uploadingPhoto,
+                  onTap: _uploadingPhoto
+                      ? null
+                      : () {
+                          _guardarCv();
+                        },
+                  child: FloatingActionButton(
+                    heroTag: 'btnGuardar',
+                    onPressed: _uploadingPhoto ? null : _guardarCv,
+                    tooltip: 'Guardar CV',
+                    backgroundColor: AppTheme.secondaryGreen,
+                    child: _uploadingPhoto
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.save, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FloatingActionButton(
+                  heroTag: 'btnPreview',
+                  onPressed: _uploadingPhoto ? null : _generarPreview,
+                  tooltip: 'Ver PDF',
+                  backgroundColor: AppTheme.accentGreen,
+                  child: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            FloatingActionButton(
-              heroTag: 'btnPreview',
-              onPressed: _uploadingPhoto ? null : _generarPreview,
-              tooltip: 'Ver PDF',
-              backgroundColor: AppTheme.accentGreen,
-              child: const Icon(Icons.picture_as_pdf, color: Colors.white),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -590,6 +667,22 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             ),
             _buildVisibilitySwitch('Ocultar Idiomas', _ocultarIdiomas, (v) {
               setState(() => _ocultarIdiomas = v);
+              _markDirty();
+            }),
+            _buildVisibilitySwitch('Ocultar Proyectos', _ocultarProyectos, (v) {
+              setState(() => _ocultarProyectos = v);
+              _markDirty();
+            }),
+            _buildVisibilitySwitch(
+              'Ocultar Certificaciones',
+              _ocultarCertificaciones,
+              (v) {
+                setState(() => _ocultarCertificaciones = v);
+                _markDirty();
+              },
+            ),
+            _buildVisibilitySwitch('Ocultar Aptitudes', _ocultarAptitudes, (v) {
+              setState(() => _ocultarAptitudes = v);
               _markDirty();
             }),
             const Divider(height: 32),
@@ -718,6 +811,100 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             _buildSkillSection('Competencias', _competencias),
             const Divider(),
             _buildSkillSection('Idiomas', _idiomas),
+            const Divider(),
+            _buildDynamicListSection<Project>(
+              title: 'Proyectos',
+              items: _projects,
+              onAdd: () => _mostrarDialogoProyecto(),
+              itemBuilder: (project, index) => ListTile(
+                title: Text(project.name),
+                subtitle: Text(
+                  [
+                    if (project.periodLabel.isNotEmpty) project.periodLabel,
+                    if (project.technologies.isNotEmpty)
+                      project.technologies.join(' · '),
+                  ].join(' | '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () =>
+                    _mostrarDialogoProyecto(existing: project, index: index),
+                trailing: _buildReorderDeleteActions(
+                  index: index,
+                  length: _projects.length,
+                  onMove: (from, to) => setState(() {
+                    final item = _projects.removeAt(from);
+                    _projects.insert(to, item);
+                    _markDirty();
+                  }),
+                  onDelete: () => setState(() {
+                    _projects.removeAt(index);
+                    _markDirty();
+                  }),
+                ),
+              ),
+            ),
+            const Divider(),
+            _buildDynamicListSection<Certification>(
+              title: 'Certificaciones y cursos',
+              items: _certifications,
+              onAdd: () => _mostrarDialogoCertificacion(),
+              itemBuilder: (cert, index) => ListTile(
+                title: Text(cert.name),
+                subtitle: Text(
+                  [
+                    if (cert.institution.isNotEmpty) cert.institution,
+                    if (cert.date != null && cert.date!.isNotEmpty) cert.date!,
+                  ].join(' · '),
+                ),
+                onTap: () =>
+                    _mostrarDialogoCertificacion(existing: cert, index: index),
+                trailing: _buildReorderDeleteActions(
+                  index: index,
+                  length: _certifications.length,
+                  onMove: (from, to) => setState(() {
+                    final item = _certifications.removeAt(from);
+                    _certifications.insert(to, item);
+                    _markDirty();
+                  }),
+                  onDelete: () => setState(() {
+                    _certifications.removeAt(index);
+                    _markDirty();
+                  }),
+                ),
+              ),
+            ),
+            const Divider(),
+            _buildDynamicListSection<Aptitude>(
+              title: 'Aptitudes',
+              items: _aptitudes,
+              onAdd: () => _mostrarDialogoAptitud(),
+              itemBuilder: (apt, index) => ListTile(
+                title: Text(apt.name),
+                subtitle: apt.description != null && apt.description!.isNotEmpty
+                    ? Text(
+                        apt.description!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : (apt.level != null ? Text('Nivel ${apt.level}') : null),
+                onTap: () =>
+                    _mostrarDialogoAptitud(existing: apt, index: index),
+                trailing: _buildReorderDeleteActions(
+                  index: index,
+                  length: _aptitudes.length,
+                  onMove: (from, to) => setState(() {
+                    final item = _aptitudes.removeAt(from);
+                    _aptitudes.insert(to, item);
+                    _markDirty();
+                  }),
+                  onDelete: () => setState(() {
+                    _aptitudes.removeAt(index);
+                    _markDirty();
+                  }),
+                ),
+              ),
+            ),
             const SizedBox(height: 120),
           ],
         ),
@@ -766,6 +953,9 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
                   _summaryRow('Formación', '${_formacion.length}'),
                   _summaryRow('Competencias', '${_competencias.length}'),
                   _summaryRow('Idiomas', '${_idiomas.length}'),
+                  _summaryRow('Proyectos', '${_projects.length}'),
+                  _summaryRow('Certificaciones', '${_certifications.length}'),
+                  _summaryRow('Aptitudes', '${_aptitudes.length}'),
                 ],
               ),
             ),
@@ -777,10 +967,20 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             label: const Text('Abrir vista previa'),
           ),
           const SizedBox(height: AppSpacing.sm),
-          OutlinedButton.icon(
-            onPressed: _uploadingPhoto ? null : _guardarCv,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Guardar CV'),
+          Semantics(
+            label: 'Guardar CV',
+            button: true,
+            enabled: !_uploadingPhoto,
+            onTap: _uploadingPhoto
+                ? null
+                : () {
+                    _guardarCv();
+                  },
+            child: OutlinedButton.icon(
+              onPressed: _uploadingPhoto ? null : _guardarCv,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Guardar CV'),
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
@@ -973,7 +1173,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             labelText: 'Nombre Completo',
             border: OutlineInputBorder(),
           ),
-          validator: (v) => v!.isEmpty ? 'Requerido' : null,
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Requerido' : null,
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -1252,6 +1453,400 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildReorderDeleteActions({
+    required int index,
+    required int length,
+    required void Function(int from, int to) onMove,
+    required VoidCallback onDelete,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Subir',
+          icon: const Icon(Icons.arrow_upward, size: 20),
+          onPressed: index > 0 ? () => onMove(index, index - 1) : null,
+        ),
+        IconButton(
+          tooltip: 'Bajar',
+          icon: const Icon(Icons.arrow_downward, size: 20),
+          onPressed: index < length - 1 ? () => onMove(index, index + 1) : null,
+        ),
+        IconButton(
+          tooltip: 'Eliminar',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: onDelete,
+        ),
+      ],
+    );
+  }
+
+  void _mostrarDialogoProyecto({Project? existing, int? index}) {
+    final nameCtrl = TextEditingController(text: existing?.name);
+    final descCtrl = TextEditingController(text: existing?.description);
+    final techCtrl = TextEditingController(
+      text: existing?.technologies.join(', '),
+    );
+    final urlCtrl = TextEditingController(text: existing?.url);
+    final repoCtrl = TextEditingController(text: existing?.repositoryUrl);
+    final startCtrl = TextEditingController(text: existing?.startDate);
+    final endCtrl = TextEditingController(text: existing?.endDate);
+    var isOngoing = existing?.isOngoing ?? false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: Text(
+                existing == null ? 'Añadir proyecto' : 'Editar proyecto',
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Nombre *'),
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Descripción',
+                      ),
+                    ),
+                    TextField(
+                      controller: techCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Tecnologías (separadas por coma)',
+                      ),
+                    ),
+                    TextField(
+                      controller: urlCtrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(labelText: 'URL'),
+                    ),
+                    TextField(
+                      controller: repoCtrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'Repositorio',
+                      ),
+                    ),
+                    TextField(
+                      controller: startCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Fecha inicio (ej. 2024)',
+                      ),
+                    ),
+                    TextField(
+                      controller: endCtrl,
+                      enabled: !isOngoing,
+                      decoration: const InputDecoration(labelText: 'Fecha fin'),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Proyecto actual'),
+                      value: isOngoing,
+                      onChanged: (v) => setLocal(() => isOngoing = v),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final name = nameCtrl.text.trim();
+                    if (name.isEmpty) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'El nombre del proyecto es obligatorio',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    if (!isOptionalHttpUrl(urlCtrl.text) ||
+                        !isOptionalHttpUrl(repoCtrl.text)) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Las URLs deben ser http(s) válidas o vacías',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    final project = Project(
+                      id: existing?.id ?? const Uuid().v4(),
+                      name: name,
+                      description: descCtrl.text.trim(),
+                      technologies: techCtrl.text
+                          .split(',')
+                          .map((e) => e.trim())
+                          .where((e) => e.isNotEmpty)
+                          .toList(),
+                      url: urlCtrl.text.trim().isEmpty
+                          ? null
+                          : urlCtrl.text.trim(),
+                      repositoryUrl: repoCtrl.text.trim().isEmpty
+                          ? null
+                          : repoCtrl.text.trim(),
+                      startDate: startCtrl.text.trim().isEmpty
+                          ? null
+                          : startCtrl.text.trim(),
+                      endDate: isOngoing || endCtrl.text.trim().isEmpty
+                          ? null
+                          : endCtrl.text.trim(),
+                      isOngoing: isOngoing,
+                    );
+                    setState(() {
+                      if (index != null) {
+                        _projects[index] = project;
+                      } else {
+                        _projects.add(project);
+                      }
+                    });
+                    Navigator.pop(context);
+                    _markDirty();
+                  },
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _mostrarDialogoCertificacion({Certification? existing, int? index}) {
+    final nameCtrl = TextEditingController(text: existing?.name);
+    final instCtrl = TextEditingController(text: existing?.institution);
+    final dateCtrl = TextEditingController(text: existing?.date);
+    final expCtrl = TextEditingController(text: existing?.expirationDate);
+    final credIdCtrl = TextEditingController(text: existing?.credentialId);
+    final credUrlCtrl = TextEditingController(text: existing?.credentialUrl);
+    final descCtrl = TextEditingController(text: existing?.description);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          existing == null
+              ? 'Añadir certificación o curso'
+              : 'Editar certificación o curso',
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Nombre *'),
+              ),
+              TextField(
+                controller: instCtrl,
+                decoration: const InputDecoration(labelText: 'Institución'),
+              ),
+              TextField(
+                controller: dateCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Fecha (ej. 2025)',
+                ),
+              ),
+              TextField(
+                controller: expCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Fecha de expiración',
+                ),
+              ),
+              TextField(
+                controller: credIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'ID de credencial',
+                ),
+              ),
+              TextField(
+                controller: credUrlCtrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'URL de credencial',
+                ),
+              ),
+              TextField(
+                controller: descCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(labelText: 'Descripción'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) {
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(content: Text('El nombre es obligatorio')),
+                );
+                return;
+              }
+              if (!isOptionalHttpUrl(credUrlCtrl.text)) {
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'La URL de credencial debe ser http(s) o vacía',
+                    ),
+                  ),
+                );
+                return;
+              }
+              final cert = Certification(
+                id: existing?.id ?? const Uuid().v4(),
+                name: name,
+                institution: instCtrl.text.trim(),
+                date: dateCtrl.text.trim().isEmpty
+                    ? null
+                    : dateCtrl.text.trim(),
+                expirationDate: expCtrl.text.trim().isEmpty
+                    ? null
+                    : expCtrl.text.trim(),
+                credentialId: credIdCtrl.text.trim().isEmpty
+                    ? null
+                    : credIdCtrl.text.trim(),
+                credentialUrl: credUrlCtrl.text.trim().isEmpty
+                    ? null
+                    : credUrlCtrl.text.trim(),
+                description: descCtrl.text.trim().isEmpty
+                    ? null
+                    : descCtrl.text.trim(),
+              );
+              setState(() {
+                if (index != null) {
+                  _certifications[index] = cert;
+                } else {
+                  _certifications.add(cert);
+                }
+              });
+              Navigator.pop(context);
+              _markDirty();
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _mostrarDialogoAptitud({Aptitude? existing, int? index}) {
+    final nameCtrl = TextEditingController(text: existing?.name);
+    final descCtrl = TextEditingController(text: existing?.description);
+    var level = existing?.level;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: Text(
+                existing == null ? 'Añadir aptitud' : 'Editar aptitud',
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre *',
+                      hintText: 'Ej. Liderazgo, Comunicación',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int?>(
+                    key: ValueKey<int?>(level),
+                    initialValue: level,
+                    decoration: const InputDecoration(
+                      labelText: 'Nivel (opcional)',
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Sin nivel')),
+                      DropdownMenuItem(value: 1, child: Text('1')),
+                      DropdownMenuItem(value: 2, child: Text('2')),
+                      DropdownMenuItem(value: 3, child: Text('3')),
+                      DropdownMenuItem(value: 4, child: Text('4')),
+                      DropdownMenuItem(value: 5, child: Text('5')),
+                    ],
+                    onChanged: (v) => setLocal(() => level = v),
+                  ),
+                  TextField(
+                    controller: descCtrl,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Descripción (opcional)',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final name = nameCtrl.text.trim();
+                    if (name.isEmpty) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'El nombre de la aptitud es obligatorio',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    final apt = Aptitude(
+                      id: existing?.id ?? const Uuid().v4(),
+                      name: name,
+                      level: level,
+                      description: descCtrl.text.trim().isEmpty
+                          ? null
+                          : descCtrl.text.trim(),
+                    );
+                    setState(() {
+                      if (index != null) {
+                        _aptitudes[index] = apt;
+                      } else {
+                        _aptitudes.add(apt);
+                      }
+                    });
+                    Navigator.pop(context);
+                    _markDirty();
+                  },
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

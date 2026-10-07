@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../core/errors/app_exception.dart';
+import '../../core/utils/firestore_map_utils.dart';
 import '../../features/resumes/data/resume_photo_service.dart';
 import '../../features/resumes/data/resume_repository.dart';
 import '../../models/resume.dart';
@@ -152,21 +153,65 @@ class CloudResumeRepository implements ResumeRepository {
     if (user == null) {
       throw const AuthAppException('Debes iniciar sesión para continuar.');
     }
-    final existentesSnap = await _col.limit(_maxCvs + 1).get();
-    final exists = existentesSnap.docs.any((d) => d.id == resume.id);
-    if (!exists && existentesSnap.size >= _maxCvs) {
-      throw AppException(PlanLimits.limitReachedMessage(isPro: _isPro));
+
+    final docId = resume.id.trim();
+    if (docId.isEmpty || docId.contains('/')) {
+      throw const ValidationAppException(
+        'Identificador de CV inválido. Cierra y vuelve a abrir el CV.',
+      );
     }
-    if (!exists) {
+
+    // Existencia real del documento (no un limit arbitrario).
+    final existingSnap = await _col.doc(docId).get();
+    final exists = existingSnap.exists;
+
+    // Free: comprobar cupo con limit acotado. Pro no usa query limit(999999+)
+    // porque Firestore rechaza limits > 10000 (invalid-argument).
+    if (!exists && !_isPro) {
+      final countSnap = await _col.limit(_maxCvs + 1).get();
+      if (countSnap.size >= _maxCvs) {
+        throw AppException(PlanLimits.limitReachedMessage(isPro: false));
+      }
       await _assertServerAllowsNewResume();
     }
 
-    final data = resume.toFirestoreMap(userId: _uid);
-    data['updatedAtServer'] = FieldValue.serverTimestamp();
-    if (resume.createdAt == null) {
-      data['createdAtServer'] = FieldValue.serverTimestamp();
+    final uid = user.uid;
+    // Payload solo con tipos JSON-safe. Sin FieldValue.delete/serverTimestamp:
+    // en Android provocaban cloud_firestore/invalid-argument al crear/editar.
+    final data = stripNullsForFirestore(resume.toFirestoreMap(userId: uid));
+    data['id'] = docId;
+    data['userId'] = uid;
+    final nowIso = DateTime.now().toIso8601String();
+    data['updatedAt'] = nowIso;
+    data['updatedAtServer'] = nowIso;
+    if (!exists) {
+      data['createdAtServer'] = nowIso;
+      data.putIfAbsent('createdAt', () => nowIso);
     }
-    await _col.doc(resume.id).set(data, SetOptions(merge: true));
+
+    try {
+      await _col.doc(docId).set(data, SetOptions(merge: true));
+    } on FirebaseException catch (e, st) {
+      debugPrint(
+        'insertarResume FirebaseException code=${e.code} message=${e.message}',
+      );
+      debugPrint('insertarResume stack: $st');
+      debugPrint(
+        'insertarResume keys=${data.keys.toList()} exists=$exists docId=$docId',
+      );
+      rethrow;
+    } catch (e, st) {
+      debugPrint('insertarResume error: $e');
+      debugPrint('insertarResume stack: $st');
+      rethrow;
+    }
+  }
+
+  /// Siempre usa el id del path del documento (evita id vacío en el mapa).
+  Resume _resumeFromDoc(String docId, Map<String, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+    map['id'] = docId;
+    return Resume.fromMap(map);
   }
 
   @override
@@ -196,11 +241,7 @@ class CloudResumeRepository implements ResumeRepository {
     final docs = snap.docs;
     final hasMore = docs.length > pageSize;
     final pageDocs = hasMore ? docs.sublist(0, pageSize) : docs;
-    final items = pageDocs.map((d) {
-      final map = Map<String, dynamic>.from(d.data());
-      map.putIfAbsent('id', () => d.id);
-      return Resume.fromMap(map);
-    }).toList();
+    final items = pageDocs.map((d) => _resumeFromDoc(d.id, d.data())).toList();
 
     String? next;
     if (hasMore && items.isNotEmpty) {
@@ -224,11 +265,7 @@ class CloudResumeRepository implements ResumeRepository {
       return FirestoreRestClient.instance.listResumes(session);
     }
     final snap = await _col.orderBy('updatedAt', descending: true).get();
-    return snap.docs.map((d) {
-      final map = Map<String, dynamic>.from(d.data());
-      map.putIfAbsent('id', () => d.id);
-      return Resume.fromMap(map);
-    }).toList();
+    return snap.docs.map((d) => _resumeFromDoc(d.id, d.data())).toList();
   }
 
   @override
@@ -245,9 +282,7 @@ class CloudResumeRepository implements ResumeRepository {
     }
     final snap = await _col.doc(id).get();
     if (!snap.exists || snap.data() == null) return null;
-    final map = Map<String, dynamic>.from(snap.data()!);
-    map.putIfAbsent('id', () => snap.id);
-    return Resume.fromMap(map);
+    return _resumeFromDoc(snap.id, snap.data()!);
   }
 
   @override

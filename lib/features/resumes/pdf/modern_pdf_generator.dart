@@ -3,11 +3,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../../models/resume.dart';
 import '../data/resume_pdf_image.dart';
+import 'pdf_fonts.dart';
 import 'pdf_widgets.dart';
 
 /// Plantilla Free — Moderno (banda de acento + MultiPage).
 Future<Uint8List> generateModernPdf(Resume resume) async {
-  final pdf = pw.Document();
+  final pdf = pw.Document(theme: await ResumePdfFonts.theme());
   final accent = PdfColor.fromInt(resume.colorHex);
   final dark = PdfColor.fromInt(0xFF2C2E3E);
   final text = PdfColor.fromInt(0xFF2A2A2A);
