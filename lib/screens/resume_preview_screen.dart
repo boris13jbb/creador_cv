@@ -94,10 +94,10 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
       appBar: AppBar(
         title: Text('CV: ${_resume.nombre}'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: 'Editar CV',
-            onPressed: () async {
+          Semantics(
+            label: 'Editar CV',
+            button: true,
+            onTap: () async {
               final result = await context.push<bool>(
                 '/resumes/edit',
                 extra: _resume,
@@ -107,11 +107,30 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
                 context.pop(true);
               }
             },
+            child: IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: 'Editar CV',
+              onPressed: () async {
+                final result = await context.push<bool>(
+                  '/resumes/edit',
+                  extra: _resume,
+                );
+                if (!mounted) return;
+                if (result == true && context.mounted) {
+                  context.pop(true);
+                }
+              },
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            tooltip: 'Compartir / Descargar',
-            onPressed: () => _compartirPdf(context),
+          Semantics(
+            label: 'Compartir / Descargar',
+            button: true,
+            onTap: () => _compartirPdf(context),
+            child: IconButton(
+              icon: const Icon(Icons.share),
+              tooltip: 'Compartir / Descargar',
+              onPressed: () => _compartirPdf(context),
+            ),
           ),
         ],
       ),

@@ -165,10 +165,12 @@ class CloudResumeRepository implements ResumeRepository {
     final existingSnap = await _col.doc(docId).get();
     final exists = existingSnap.exists;
 
-    if (!exists) {
+    // Free: comprobar cupo con limit acotado. Pro no usa query limit(999999+)
+    // porque Firestore rechaza limits > 10000 (invalid-argument).
+    if (!exists && !_isPro) {
       final countSnap = await _col.limit(_maxCvs + 1).get();
       if (countSnap.size >= _maxCvs) {
-        throw AppException(PlanLimits.limitReachedMessage(isPro: _isPro));
+        throw AppException(PlanLimits.limitReachedMessage(isPro: false));
       }
       await _assertServerAllowsNewResume();
     }

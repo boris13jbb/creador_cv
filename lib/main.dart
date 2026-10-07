@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import 'core/observability/app_observability.dart';
 import 'core/routing/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
+import 'saas/config/saas_platform.dart';
 import 'saas/providers/auth_controller.dart';
 import 'saas/services/cloud_resume_repository.dart';
 import 'screens/auth/firebase_init_error_screen.dart';
@@ -19,13 +22,19 @@ Future<void> main() async {
 
 Future<void> _bootstrapApp() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Expone el árbol semántico en Web para a11y y automatización (Playwright).
+  if (kIsWeb) {
+    SemanticsBinding.instance.ensureSemantics();
+  }
 
   // Evita descargas de fuentes en cada hot restart en release/CI si se embebe asset;
   // en debug se permiten para desarrollo.
-  GoogleFonts.config.allowRuntimeFetching = !bool.fromEnvironment(
+  // bool.fromEnvironment debe ser const (requerido por dart2js / Flutter Web).
+  const disableGoogleFontsFetch = bool.fromEnvironment(
     'DISABLE_GOOGLE_FONTS_FETCH',
     defaultValue: false,
   );
+  GoogleFonts.config.allowRuntimeFetching = !disableGoogleFontsFetch;
 
   Object? firebaseError;
   try {
@@ -41,7 +50,9 @@ Future<void> _bootstrapApp() async {
     firebaseError = e;
   }
 
-  if (firebaseError != null) {
+  // En Windows/Linux Auth+Firestore van por REST; si el núcleo nativo falla
+  // igual podemos arrancar. En mobile/web el SDK es obligatorio.
+  if (firebaseError != null && !saasUseRestBackend) {
     runApp(
       FirebaseInitErrorScreen(
         message: firebaseError.toString(),

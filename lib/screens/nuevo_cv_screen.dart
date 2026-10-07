@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -344,7 +344,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   }
 
   Future<void> _guardarCv() async {
-    if (!_formKey.currentState!.validate()) return;
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) return;
     _autosaveTimer?.cancel();
     setState(() => _uploadingPhoto = true);
     try {
@@ -362,7 +363,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           _autosaveError = null;
         }
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('guardarCv error: $e\n$st');
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -433,93 +435,135 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     final desktop = AppLayout.of(context) == AppLayoutType.desktop;
     final isPro = context.watch<AuthController>().isPro;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.resumeExistente != null || _persistedId != null
-              ? 'Editar CV'
-              : 'Crear CV Profesional',
-        ),
-        actions: [
-          if (_autosaveLabel.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.sizeOf(context).width * 0.32,
-                  ),
-                  child: Text(
-                    _autosaveLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _autosaveStatus == _AutosaveStatus.error
-                          ? AppColors.danger
-                          : AppColors.inkMuted,
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          if (!_uploadingPhoto) {
+            _guardarCv();
+          }
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              widget.resumeExistente != null || _persistedId != null
+                  ? 'Editar CV'
+                  : 'Crear CV Profesional',
+            ),
+            actions: [
+              if (_autosaveLabel.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.sizeOf(context).width * 0.32,
+                      ),
+                      child: Text(
+                        _autosaveLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _autosaveStatus == _AutosaveStatus.error
+                              ? AppColors.danger
+                              : AppColors.inkMuted,
+                        ),
+                      ),
                     ),
                   ),
                 ),
+              Semantics(
+                label: 'Guardar CV',
+                button: true,
+                enabled: !_uploadingPhoto,
+                onTap: _uploadingPhoto
+                    ? null
+                    : () {
+                        _guardarCv();
+                      },
+                child: IconButton(
+                  icon: const Icon(Icons.save),
+                  tooltip: 'Guardar CV',
+                  onPressed: _uploadingPhoto ? null : _guardarCv,
+                ),
               ),
-            ),
-          IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: 'Guardar CV',
-            onPressed: _uploadingPhoto ? null : _guardarCv,
+              Semantics(
+                label: 'Ver PDF',
+                button: true,
+                enabled: !_uploadingPhoto,
+                onTap: _uploadingPhoto
+                    ? null
+                    : () {
+                        _generarPreview();
+                      },
+                child: IconButton(
+                  icon: const Icon(Icons.picture_as_pdf),
+                  tooltip: 'Ver PDF',
+                  onPressed: _uploadingPhoto ? null : _generarPreview,
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'Ver PDF',
-            onPressed: _uploadingPhoto ? null : _generarPreview,
+          body: Form(
+            key: _formKey,
+            child: desktop
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(flex: 3, child: _buildFormScroll(isPro)),
+                      const VerticalDivider(width: 1),
+                      SizedBox(width: 320, child: _buildDesktopSummaryPanel()),
+                    ],
+                  )
+                : _buildFormScroll(isPro),
           ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: desktop
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(flex: 3, child: _buildFormScroll(isPro)),
-                  const VerticalDivider(width: 1),
-                  SizedBox(width: 320, child: _buildDesktopSummaryPanel()),
-                ],
-              )
-            : _buildFormScroll(isPro),
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 16, right: 16),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FloatingActionButton(
-              heroTag: 'btnGuardar',
-              onPressed: _uploadingPhoto ? null : _guardarCv,
-              tooltip: 'Guardar CV',
-              backgroundColor: AppTheme.secondaryGreen,
-              child: _uploadingPhoto
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save, color: Colors.white),
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 16, right: 16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Semantics(
+                  label: 'Guardar CV',
+                  button: true,
+                  enabled: !_uploadingPhoto,
+                  onTap: _uploadingPhoto
+                      ? null
+                      : () {
+                          _guardarCv();
+                        },
+                  child: FloatingActionButton(
+                    heroTag: 'btnGuardar',
+                    onPressed: _uploadingPhoto ? null : _guardarCv,
+                    tooltip: 'Guardar CV',
+                    backgroundColor: AppTheme.secondaryGreen,
+                    child: _uploadingPhoto
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.save, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FloatingActionButton(
+                  heroTag: 'btnPreview',
+                  onPressed: _uploadingPhoto ? null : _generarPreview,
+                  tooltip: 'Ver PDF',
+                  backgroundColor: AppTheme.accentGreen,
+                  child: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            FloatingActionButton(
-              heroTag: 'btnPreview',
-              onPressed: _uploadingPhoto ? null : _generarPreview,
-              tooltip: 'Ver PDF',
-              backgroundColor: AppTheme.accentGreen,
-              child: const Icon(Icons.picture_as_pdf, color: Colors.white),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -923,10 +967,20 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             label: const Text('Abrir vista previa'),
           ),
           const SizedBox(height: AppSpacing.sm),
-          OutlinedButton.icon(
-            onPressed: _uploadingPhoto ? null : _guardarCv,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Guardar CV'),
+          Semantics(
+            label: 'Guardar CV',
+            button: true,
+            enabled: !_uploadingPhoto,
+            onTap: _uploadingPhoto
+                ? null
+                : () {
+                    _guardarCv();
+                  },
+            child: OutlinedButton.icon(
+              onPressed: _uploadingPhoto ? null : _guardarCv,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Guardar CV'),
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
@@ -1119,7 +1173,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             labelText: 'Nombre Completo',
             border: OutlineInputBorder(),
           ),
-          validator: (v) => v!.isEmpty ? 'Requerido' : null,
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Requerido' : null,
         ),
         const SizedBox(height: 16),
         TextFormField(
