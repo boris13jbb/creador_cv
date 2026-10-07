@@ -511,3 +511,49 @@ Creada con `git switch -c` desde el working tree de `main` @ `cac5784`.
 
 **Fase 2 â€” Super Admin:** cerrar/validar WIP del panel + `adminConsole` (tests, docs, decisiÃ³n hub), sin deploy producciÃ³n.
 Antes o en paralelo: autorizaciÃ³n de **commit + push + PR** de esta rama para confirmar CI verde en GitHub.
+
+---
+
+## Fase — Ampliación profesional del CV (2026-10-06)
+
+**Rama:** `feature/cv-profesional-sections`
+**Estado:** implementado en código (revisión/PR pendiente)
+
+### Nuevas secciones opcionales
+
+| Sección | Modelo | Persistencia (Firestore) | PDF / preview |
+|---------|--------|--------------------------|---------------|
+| Proyectos | `Project` | `projects: []` | Título **Proyectos**; oculto si vacío o `ocultarProyectos` |
+| Certificaciones y cursos | `Certification` | `certifications: []` | Título **Certificaciones y cursos** |
+| Aptitudes | `Aptitude` | `aptitudes: []` | Chips / wrap |
+
+### Modelo y compatibilidad
+
+- Schema CV: `Resume.currentSchemaVersion = 3`.
+- CV antiguos **sin** estas claves cargan listas vacías (`[]`) sin pérdida de datos.
+- Flags de visibilidad nuevos: `ocultarProyectos`, `ocultarCertificaciones`, `ocultarAptitudes`.
+- Autosave / guardado cloud reutilizan el mismo documento `users/{uid}/resumes/{id}` (sin colecciones nuevas).
+
+### Editor
+
+- Secciones en `nuevo_cv_screen.dart` con patrón existente (lista + diálogo).
+- Acciones: agregar, editar, eliminar, reordenar (subir/bajar).
+- Validación: nombre obligatorio; URLs opcionales http(s).
+
+### PDF / Unicode
+
+- `ResumePdfFonts` (`pdf_fonts.dart`) aplica **Noto Sans** vía `PdfGoogleFonts` a las 4 plantillas.
+- Bloques nuevos en `pdf_widgets.dart` (`buildResumeContentBlocks`).
+
+### Tests añadidos/ampliados
+
+- `test/cv_sections_models_test.dart`
+- `test/url_validators_test.dart`
+- Compatibilidad + roundtrip en `test/resume_serialization_test.dart`
+- Casos PDF (secciones / Unicode / largo) en `test/pdf_templates_test.dart`
+
+### Fuera de alcance de esta fase
+
+- Duplicar CV (sigue faltante producto; no hay código de duplicación que actualizar).
+- Super Admin / Stripe / Functions admin / `docs/SUPER_ADMIN.md` (no tocados).
+- Deploy de producción: **no** incluido.

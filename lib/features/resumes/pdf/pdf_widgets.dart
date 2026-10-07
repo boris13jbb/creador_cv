@@ -1,5 +1,6 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import '../../../core/utils/url_validators.dart';
 import '../../../models/resume.dart';
 
 pw.Widget pdfBulletDot(PdfColor color, {double size = 6}) => pw.Container(
@@ -283,10 +284,176 @@ List<pw.Widget> buildResumeContentBlocks({
         children: [
           pdfSectionTitle('Idiomas', accent),
           ...resume.idiomas.map((s) => pdfSkillDots(s.nombre, s.nivel, accent)),
+          pw.SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  if (!resume.ocultarProyectos && resume.projects.isNotEmpty) {
+    blocks.add(pdfSectionTitle('Proyectos', accent));
+    for (final p in resume.projects) {
+      blocks.add(pdfProjectBlock(p, accent, text));
+    }
+    blocks.add(pw.SizedBox(height: 8));
+  }
+
+  if (!resume.ocultarCertificaciones && resume.certifications.isNotEmpty) {
+    blocks.add(pdfSectionTitle('Certificaciones y cursos', accent));
+    for (final c in resume.certifications) {
+      blocks.add(pdfCertificationBlock(c, accent, text));
+    }
+    blocks.add(pw.SizedBox(height: 8));
+  }
+
+  if (!resume.ocultarAptitudes && resume.aptitudes.isNotEmpty) {
+    blocks.add(
+      pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pdfSectionTitle('Aptitudes', accent),
+          pw.Wrap(
+            children: resume.aptitudes
+                .map((a) => pdfSkillChip(a.name, accent, text))
+                .toList(),
+          ),
+          pw.SizedBox(height: 8),
         ],
       ),
     );
   }
 
   return blocks;
+}
+
+pw.Widget pdfProjectBlock(Project p, PdfColor accent, PdfColor text) {
+  final period = p.periodLabel;
+  final techs = p.technologies.where((t) => t.trim().isNotEmpty).toList();
+  final url = p.url?.trim();
+  final repo = p.repositoryUrl?.trim();
+
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 12),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: pw.Text(
+                p.name,
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                  color: text,
+                ),
+              ),
+            ),
+            if (period.isNotEmpty)
+              pw.Text(
+                period,
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  color: accent,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+          ],
+        ),
+        if (p.description.trim().isNotEmpty) ...[
+          pw.SizedBox(height: 4),
+          pw.Text(
+            p.description.trim(),
+            style: pw.TextStyle(fontSize: 10, color: text, lineSpacing: 2),
+          ),
+        ],
+        if (techs.isNotEmpty) ...[
+          pw.SizedBox(height: 4),
+          pw.Text(
+            techs.join(' · '),
+            style: pw.TextStyle(
+              fontSize: 9,
+              fontStyle: pw.FontStyle.italic,
+              color: accent,
+            ),
+          ),
+        ],
+        if (url != null && url.isNotEmpty) ...[
+          pw.SizedBox(height: 2),
+          pw.Text(
+            shortenUrlForDisplay(url),
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
+        ],
+        if (repo != null && repo.isNotEmpty) ...[
+          pw.SizedBox(height: 2),
+          pw.Text(
+            shortenUrlForDisplay(repo),
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+pw.Widget pdfCertificationBlock(
+  Certification c,
+  PdfColor accent,
+  PdfColor text,
+) {
+  final meta = <String>[];
+  if (c.institution.trim().isNotEmpty) meta.add(c.institution.trim());
+  if (c.date != null && c.date!.trim().isNotEmpty) meta.add(c.date!.trim());
+
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 10),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          c.name,
+          style: pw.TextStyle(
+            fontSize: 11,
+            fontWeight: pw.FontWeight.bold,
+            color: text,
+          ),
+        ),
+        if (meta.isNotEmpty) ...[
+          pw.SizedBox(height: 2),
+          pw.Text(
+            meta.join(' · '),
+            style: pw.TextStyle(
+              fontSize: 10,
+              fontStyle: pw.FontStyle.italic,
+              color: accent,
+            ),
+          ),
+        ],
+        if (c.expirationDate != null && c.expirationDate!.trim().isNotEmpty)
+          pw.Text(
+            'Expira: ${c.expirationDate!.trim()}',
+            style: pw.TextStyle(fontSize: 9, color: text),
+          ),
+        if (c.credentialId != null && c.credentialId!.trim().isNotEmpty)
+          pw.Text(
+            'Credential ID: ${c.credentialId!.trim()}',
+            style: pw.TextStyle(fontSize: 9, color: text),
+          ),
+        if (c.credentialUrl != null && c.credentialUrl!.trim().isNotEmpty)
+          pw.Text(
+            shortenUrlForDisplay(c.credentialUrl!),
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
+        if (c.description != null && c.description!.trim().isNotEmpty) ...[
+          pw.SizedBox(height: 2),
+          pw.Text(
+            c.description!.trim(),
+            style: pw.TextStyle(fontSize: 9, color: text),
+          ),
+        ],
+      ],
+    ),
+  );
 }

@@ -3,11 +3,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../../models/resume.dart';
 import '../data/resume_pdf_image.dart';
+import 'pdf_fonts.dart';
 import 'pdf_widgets.dart';
 
 /// Plantilla Free — Clásico (cabecera navy + contenido MultiPage).
 Future<Uint8List> generateClassicPdf(Resume resume) async {
-  final pdf = pw.Document();
+  final pdf = pw.Document(theme: await ResumePdfFonts.theme());
   final accent = PdfColor.fromInt(resume.colorHex);
   final header = PdfColor.fromInt(0xFF20354B);
   final text = PdfColor.fromInt(0xFF333333);

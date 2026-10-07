@@ -112,5 +112,103 @@ void main() {
       );
       expect(visible.length, isNot(equals(hidden.length)));
     });
+
+    test('PDF sin nuevas secciones no falla', () async {
+      final bytes = await ResumePdfService.generateResumePdf(
+        _sample(),
+        isPro: true,
+      );
+      expect(bytes.length, greaterThan(500));
+    });
+
+    test('PDF con proyectos certificaciones y aptitudes', () async {
+      final rich = _sample(designIndex: 1).copyWith(
+        projects: const [
+          Project(
+            id: 'p1',
+            name: 'Sistema de gestión',
+            description: 'Plataforma SaaS con Flutter y NestJS.',
+            technologies: ['Flutter', 'NestJS', 'MySQL'],
+            url: 'https://example.com/app',
+            startDate: '2025',
+            isOngoing: true,
+          ),
+        ],
+        certifications: const [
+          Certification(
+            id: 'c1',
+            name: 'AWS Cloud Practitioner',
+            institution: 'Amazon Web Services',
+            date: '2026',
+            credentialId: 'XXXXX',
+          ),
+        ],
+        aptitudes: const [
+          Aptitude(id: 'a1', name: 'Liderazgo'),
+          Aptitude(id: 'a2', name: 'Comunicación'),
+          Aptitude(id: 'a3', name: 'Trabajo en equipo'),
+        ],
+      );
+      final empty = await ResumePdfService.generateResumePdf(
+        _sample(designIndex: 1),
+        isPro: true,
+      );
+      final withSections = await ResumePdfService.generateResumePdf(
+        rich,
+        isPro: true,
+      );
+      expect(withSections.length, greaterThan(empty.length));
+      expect(withSections[0], 0x25);
+    });
+
+    test('PDF Unicode genera sin excepción', () async {
+      final unicode = _sample().copyWith(
+        nombre: 'Juan Muñoz Peña',
+        perfil: 'Educación, comunicación y gestión de equipos.',
+        projects: const [
+          Project(
+            id: 'u1',
+            name: 'Aplicación de nómina',
+            description: 'Módulo de sincronización y roles de pago.',
+          ),
+        ],
+        aptitudes: const [Aptitude(id: 'u2', name: 'Resolución de problemas')],
+      );
+      final bytes = await ResumePdfService.generateResumePdf(
+        unicode,
+        isPro: true,
+      );
+      expect(bytes.length, greaterThan(500));
+    });
+
+    test('PDF largo con tres secciones no vacío', () async {
+      final long = _sample(experiencias: 10).copyWith(
+        projects: List.generate(
+          5,
+          (i) => Project(
+            id: 'p$i',
+            name: 'Proyecto $i',
+            description: 'Descripción extendida del proyecto $i. ' * 4,
+            technologies: ['Flutter', 'Dart', 'Firebase'],
+            startDate: '202$i',
+          ),
+        ),
+        certifications: List.generate(
+          6,
+          (i) => Certification(
+            id: 'c$i',
+            name: 'Certificación $i',
+            institution: 'Academia $i',
+            date: '202$i',
+          ),
+        ),
+        aptitudes: List.generate(
+          8,
+          (i) => Aptitude(id: 'a$i', name: 'Aptitud $i'),
+        ),
+      );
+      final bytes = await ResumePdfService.generateResumePdf(long, isPro: true);
+      expect(bytes.length, greaterThan(2000));
+    });
   });
 }
