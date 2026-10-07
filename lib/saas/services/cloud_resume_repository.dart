@@ -176,15 +176,23 @@ class CloudResumeRepository implements ResumeRepository {
     final data = stripNullsForFirestore(resume.toFirestoreMap(userId: _uid));
     data['id'] = docId;
     data['userId'] = _uid;
-    // Limpia data-URI legacy sin enviar `null` crudo al SDK.
-    if (!data.containsKey('fotoPath')) {
+    // FieldValue.delete() en CREATE de documento nuevo provoca invalid-argument.
+    // Solo borrar fotoPath legacy al actualizar un CV que ya existe.
+    if (exists && !data.containsKey('fotoPath')) {
       data['fotoPath'] = FieldValue.delete();
     }
     data['updatedAtServer'] = FieldValue.serverTimestamp();
-    if (resume.createdAt == null) {
+    if (!exists || resume.createdAt == null) {
       data['createdAtServer'] = FieldValue.serverTimestamp();
     }
-    await _col.doc(docId).set(data, SetOptions(merge: true));
+    try {
+      await _col.doc(docId).set(data, SetOptions(merge: true));
+    } catch (e, st) {
+      debugPrint('insertarResume Firestore error: $e');
+      debugPrint('insertarResume stack: $st');
+      debugPrint('insertarResume keys: ${data.keys.toList()} exists=$exists');
+      rethrow;
+    }
   }
 
   /// Siempre usa el id del path del documento (evita id vacío en el mapa).
