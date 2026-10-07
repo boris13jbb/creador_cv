@@ -9,6 +9,7 @@ import '../core/errors/app_exception.dart';
 import '../core/routing/app_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
+import '../core/utils/list_edit.dart';
 import '../core/utils/url_validators.dart';
 import '../core/widgets/app_layout.dart';
 import '../features/resumes/data/resume_photo_service.dart';
@@ -80,6 +81,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   /// Id estable tras el primer guardado (permite autosave en CVs nuevos).
   String? _persistedId;
   Timer? _autosaveTimer;
+  bool _dirtyNotifyScheduled = false;
   _AutosaveStatus _autosaveStatus = _AutosaveStatus.idle;
   String? _autosaveError;
   bool _autosaveEnabled = false;
@@ -188,12 +190,18 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   void _markDirty() {
     if (!_autosaveEnabled || _uploadingPhoto) return;
     _autosaveTimer?.cancel();
-    if (_autosaveStatus != _AutosaveStatus.dirty) {
-      setState(() => _autosaveStatus = _AutosaveStatus.dirty);
-    } else {
-      _autosaveStatus = _AutosaveStatus.dirty;
-    }
+    _autosaveStatus = _AutosaveStatus.dirty;
     _autosaveTimer = Timer(const Duration(seconds: 3), _runAutosave);
+    // No hacer setState dentro del listener del TextEditingController:
+    // en Flutter web reconstruye el campo a mitad del input y el texto nuevo
+    // se inserta sobre el anterior.
+    if (_dirtyNotifyScheduled) return;
+    _dirtyNotifyScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dirtyNotifyScheduled = false;
+      if (!mounted || _autosaveStatus != _AutosaveStatus.dirty) return;
+      setState(() {});
+    });
   }
 
   Future<void> _runAutosave() async {
@@ -816,25 +824,20 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
               title: 'Proyectos',
               items: _projects,
               onAdd: () => _mostrarDialogoProyecto(),
-              itemBuilder: (project, index) => ListTile(
-                title: Text(project.name),
-                subtitle: Text(
-                  [
-                    if (project.periodLabel.isNotEmpty) project.periodLabel,
-                    if (project.technologies.isNotEmpty)
-                      project.technologies.join(' · '),
-                  ].join(' | '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+              itemBuilder: (project, index) => _buildEditableEntry(
+                title: project.name,
+                subtitle: [
+                  if (project.periodLabel.isNotEmpty) project.periodLabel,
+                  if (project.technologies.isNotEmpty)
+                    project.technologies.join(' · '),
+                ].join(' | '),
                 onTap: () =>
                     _mostrarDialogoProyecto(existing: project, index: index),
-                trailing: _buildReorderDeleteActions(
+                actions: _buildReorderDeleteActions(
                   index: index,
                   length: _projects.length,
                   onMove: (from, to) => setState(() {
-                    final item = _projects.removeAt(from);
-                    _projects.insert(to, item);
+                    moveListItem(_projects, from, to);
                     _markDirty();
                   }),
                   onDelete: () => setState(() {
@@ -849,22 +852,19 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
               title: 'Certificaciones y cursos',
               items: _certifications,
               onAdd: () => _mostrarDialogoCertificacion(),
-              itemBuilder: (cert, index) => ListTile(
-                title: Text(cert.name),
-                subtitle: Text(
-                  [
-                    if (cert.institution.isNotEmpty) cert.institution,
-                    if (cert.date != null && cert.date!.isNotEmpty) cert.date!,
-                  ].join(' · '),
-                ),
+              itemBuilder: (cert, index) => _buildEditableEntry(
+                title: cert.name,
+                subtitle: [
+                  if (cert.institution.isNotEmpty) cert.institution,
+                  if (cert.date != null && cert.date!.isNotEmpty) cert.date!,
+                ].join(' · '),
                 onTap: () =>
                     _mostrarDialogoCertificacion(existing: cert, index: index),
-                trailing: _buildReorderDeleteActions(
+                actions: _buildReorderDeleteActions(
                   index: index,
                   length: _certifications.length,
                   onMove: (from, to) => setState(() {
-                    final item = _certifications.removeAt(from);
-                    _certifications.insert(to, item);
+                    moveListItem(_certifications, from, to);
                     _markDirty();
                   }),
                   onDelete: () => setState(() {
@@ -879,23 +879,18 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
               title: 'Aptitudes',
               items: _aptitudes,
               onAdd: () => _mostrarDialogoAptitud(),
-              itemBuilder: (apt, index) => ListTile(
-                title: Text(apt.name),
+              itemBuilder: (apt, index) => _buildEditableEntry(
+                title: apt.name,
                 subtitle: apt.description != null && apt.description!.isNotEmpty
-                    ? Text(
-                        apt.description!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      )
-                    : (apt.level != null ? Text('Nivel ${apt.level}') : null),
+                    ? apt.description!
+                    : (apt.level != null ? 'Nivel ${apt.level}' : ''),
                 onTap: () =>
                     _mostrarDialogoAptitud(existing: apt, index: index),
-                trailing: _buildReorderDeleteActions(
+                actions: _buildReorderDeleteActions(
                   index: index,
                   length: _aptitudes.length,
                   onMove: (from, to) => setState(() {
-                    final item = _aptitudes.removeAt(from);
-                    _aptitudes.insert(to, item);
+                    moveListItem(_aptitudes, from, to);
                     _markDirty();
                   }),
                   onDelete: () => setState(() {
@@ -1203,6 +1198,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           children: [
             _buildSectionTitle(title),
             IconButton(
+              tooltip: 'Añadir $title',
               icon: const Icon(Icons.add_circle, color: AppColors.emerald),
               onPressed: onAdd,
             ),
@@ -1236,6 +1232,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           children: [
             _buildSectionTitle(title),
             IconButton(
+              tooltip: 'Añadir $title',
               icon: const Icon(Icons.add_circle, color: AppColors.emerald),
               onPressed: () => _mostrarDialogoSkill(title, list),
             ),
@@ -1465,22 +1462,69 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          tooltip: 'Subir',
-          icon: const Icon(Icons.arrow_upward, size: 20),
+        _listActionButton(
+          label: 'Subir',
+          icon: Icons.arrow_upward,
           onPressed: index > 0 ? () => onMove(index, index - 1) : null,
         ),
-        IconButton(
-          tooltip: 'Bajar',
-          icon: const Icon(Icons.arrow_downward, size: 20),
+        _listActionButton(
+          label: 'Bajar',
+          icon: Icons.arrow_downward,
           onPressed: index < length - 1 ? () => onMove(index, index + 1) : null,
         ),
-        IconButton(
-          tooltip: 'Eliminar',
-          icon: const Icon(Icons.delete_outline),
+        _listActionButton(
+          label: 'Eliminar',
+          icon: Icons.delete_outline,
           onPressed: onDelete,
         ),
       ],
+    );
+  }
+
+  /// Título editable y acciones fuera del InkWell del ListTile.
+  /// Si los botones van en `trailing`, el toque lo absorbe la fila y no
+  /// llega a Subir, Bajar ni Eliminar.
+  Widget _buildEditableEntry({
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required Widget actions,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(title),
+            subtitle: subtitle.isEmpty
+                ? null
+                : Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+            onTap: onTap,
+          ),
+        ),
+        actions,
+      ],
+    );
+  }
+
+  Widget _listActionButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback? onPressed,
+  }) {
+    return Semantics(
+      button: true,
+      enabled: onPressed != null,
+      label: label,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: IconButton(
+          tooltip: label,
+          onPressed: onPressed,
+          icon: Icon(icon, size: 20),
+        ),
+      ),
     );
   }
 

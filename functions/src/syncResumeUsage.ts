@@ -17,7 +17,12 @@ import {refreshResumeUsage} from "./usageStore";
 export const syncResumeUsage = onRequest(
   {
     region: FUNCTIONS_REGION,
+    // Gen2/Cloud Run rechaza el preflight OPTIONS con 403 si el invoker
+    // no es público, antes de que aplique cors:true. El POST sigue exigiendo
+    // Bearer (requireUidFromRequest). Hace falta desplegar la función para
+    // que el 403 desaparezca en localhost y en hosting.
     cors: true,
+    invoker: "public",
   },
   async (req, res) => {
     if (req.method === "OPTIONS") {
