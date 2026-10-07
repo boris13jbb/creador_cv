@@ -1,9 +1,27 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:creador_cv/models/resume.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Resume serialización retrocompatible', () {
+    test('fotoBytes es efímero y no se serializa a Firestore', () {
+      final r = Resume(
+        id: 'foto-1',
+        nombre: 'Test',
+        perfil: 'P',
+        fotoBytes: Uint8List.fromList([1, 2, 3, 4]),
+        datosPersonales: const [],
+        competencias: const [],
+        idiomas: const [],
+        experiencia: const [],
+        formacion: const [],
+      );
+      expect(r.hasPhotoBytes, isTrue);
+      final out = r.toFirestoreMap(userId: 'u');
+      expect(out.containsKey('fotoBytes'), isFalse);
+    });
+
     test('lee listas nativas schema v2', () {
       final map = {
         'id': '1',

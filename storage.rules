@@ -19,6 +19,7 @@ service firebase.storage {
     }
 
     // Fotos de perfil de CV: users/{uid}/resumes/{resumeId}/photo.*
+    // Lectura: dueño (SDK/auth) o token de descarga en la URL (getDownloadURL).
     match /users/{userId}/resumes/{resumeId}/{fileName} {
       allow read: if isOwner(userId);
       allow write: if isOwner(userId)

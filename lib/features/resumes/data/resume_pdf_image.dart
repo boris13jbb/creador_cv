@@ -1,13 +1,29 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:universal_io/io.dart';
 import '../../../models/resume.dart';
+import 'resume_photo_service.dart';
 
 /// Carga única de imagen de perfil para plantillas PDF.
+///
+/// Prioridad: bytes en memoria → Storage autenticado → URL/archivo local.
 Future<pw.ImageProvider?> loadResumeProfileImage(Resume resume) async {
+  if (resume.hasPhotoBytes) {
+    return pw.MemoryImage(resume.fotoBytes!);
+  }
+
+  try {
+    final bytes = await ResumePhotoService.instance.loadBytesForResume(resume);
+    if (bytes != null && bytes.isNotEmpty) {
+      return pw.MemoryImage(bytes);
+    }
+  } catch (e) {
+    debugPrint('loadResumeProfileImage: $e');
+  }
+
+  // Fallback legacy directo (por si loadBytesForResume no aplica).
   final ref = resume.effectivePhotoRef;
   if (ref == null || ref.isEmpty) return null;
   try {
@@ -15,20 +31,15 @@ Future<pw.ImageProvider?> loadResumeProfileImage(Resume resume) async {
       final base64 = ref.split(',').last;
       return pw.MemoryImage(base64Decode(base64));
     }
-    if (ref.startsWith('http://') || ref.startsWith('https://')) {
-      final res = await http.get(Uri.parse(ref));
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        return pw.MemoryImage(res.bodyBytes);
-      }
-      return null;
-    }
     if (!kIsWeb) {
       final file = File(ref);
       if (await file.exists()) {
         return pw.MemoryImage(await file.readAsBytes());
       }
     }
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('loadResumeProfileImage fallback: $e');
+  }
   return null;
 }
 

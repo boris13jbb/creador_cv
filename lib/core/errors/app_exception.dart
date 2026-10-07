@@ -38,14 +38,31 @@ class ErrorMapper {
   static AppException map(Object error) {
     if (error is AppException) return error;
     final text = error.toString().replaceFirst('Exception: ', '');
-    if (text.toLowerCase().contains('permission') ||
-        text.toLowerCase().contains('permiso')) {
+    final lower = text.toLowerCase();
+    if (lower.contains('permission') || lower.contains('permiso')) {
       return PermissionAppException(text);
     }
-    if (text.toLowerCase().contains('network') ||
-        text.toLowerCase().contains('socket') ||
-        text.toLowerCase().contains('conexión')) {
-      return NetworkAppException(text);
+    if (lower.contains('unknownhost') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('unable to resolve host') ||
+        lower.contains('network') ||
+        lower.contains('socket') ||
+        lower.contains('conexión') ||
+        lower.contains('unavailable')) {
+      return const NetworkAppException(
+        'Sin conexión a Firebase. Revisa Wi‑Fi/datos e inténtalo de nuevo.',
+      );
+    }
+    if (lower.contains('object-not-found') ||
+        lower.contains('storage bucket') ||
+        (lower.contains('storage') && lower.contains('404'))) {
+      return const StorageAppException(
+        'Firebase Storage no está disponible. Activa Storage en la consola.',
+      );
+    }
+    if (lower.contains('no hay sesión activa') ||
+        lower.contains('sesión expiró')) {
+      return AuthAppException(text);
     }
     return AppException(text, cause: error);
   }

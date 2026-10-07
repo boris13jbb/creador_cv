@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../core/errors/app_exception.dart';
 import '../../features/resumes/data/resume_photo_service.dart';
@@ -13,6 +14,14 @@ import '../providers/auth_controller.dart';
 import 'auth_service.dart';
 import 'firestore_rest_client.dart';
 import 'usage_service.dart';
+
+/// Resultado de guardar un CV con foto opcional.
+class ResumeSaveOutcome {
+  final Resume resume;
+  final String? photoWarning;
+
+  const ResumeSaveOutcome({required this.resume, this.photoWarning});
+}
 
 /// Implementación cloud del repositorio de CVs (SDK nativo o REST).
 class CloudResumeRepository implements ResumeRepository {
@@ -76,39 +85,48 @@ class CloudResumeRepository implements ResumeRepository {
   Future<void> save(Resume resume) => insertarResume(resume);
 
   /// Guarda CV; sube foto pendiente si [pendingPhotoBytes] no es null.
-  Future<Resume> saveWithOptionalPhoto({
+  ///
+  /// Si la foto falla (p. ej. Storage no activado), el CV se guarda igual
+  /// y [ResumeSaveOutcome.photoWarning] informa al usuario.
+  Future<ResumeSaveOutcome> saveWithOptionalPhoto({
     required Resume resume,
     List<int>? pendingPhotoBytes,
     bool squareCrop = true,
   }) async {
     var toSave = resume;
+    String? photoWarning;
     final uid = _uid;
 
     if (pendingPhotoBytes != null && pendingPhotoBytes.isNotEmpty) {
-      final processed = ResumePhotoService.instance.processBytes(
-        Uint8List.fromList(pendingPhotoBytes),
-        squareCrop: squareCrop,
-      );
-      if (resume.fotoStoragePath != null &&
-          resume.fotoStoragePath!.isNotEmpty) {
-        await ResumePhotoService.instance.deleteIfExists(
-          resume.fotoStoragePath,
+      try {
+        final processed = ResumePhotoService.instance.processBytes(
+          Uint8List.fromList(pendingPhotoBytes),
+          squareCrop: squareCrop,
         );
+        if (resume.fotoStoragePath != null &&
+            resume.fotoStoragePath!.isNotEmpty) {
+          await ResumePhotoService.instance.deleteIfExists(
+            resume.fotoStoragePath,
+          );
+        }
+        final uploaded = await ResumePhotoService.instance.upload(
+          uid: uid,
+          resumeId: resume.id,
+          photo: processed,
+        );
+        toSave = resume.copyWith(
+          fotoUrl: uploaded.downloadUrl,
+          fotoStoragePath: uploaded.storagePath,
+          clearFotoPath: true,
+        );
+      } catch (e) {
+        photoWarning = ErrorMapper.messageOf(e);
+        debugPrint('Foto no subida; se guarda el CV sin foto nueva: $e');
       }
-      final uploaded = await ResumePhotoService.instance.upload(
-        uid: uid,
-        resumeId: resume.id,
-        photo: processed,
-      );
-      toSave = resume.copyWith(
-        fotoUrl: uploaded.downloadUrl,
-        fotoStoragePath: uploaded.storagePath,
-        clearFotoPath: true,
-      );
     }
 
     await insertarResume(toSave);
-    return toSave;
+    return ResumeSaveOutcome(resume: toSave, photoWarning: photoWarning);
   }
 
   Future<void> insertarResume(Resume resume) async {

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../core/utils/json_list_codec.dart';
 
 /// Modelo de CV con serialización retrocompatible (JSON-string legacy + listas nativas).
@@ -15,6 +17,10 @@ class Resume {
 
   /// Ruta del objeto en Storage (para borrado de huérfanos).
   final String? fotoStoragePath;
+
+  /// Bytes locales en memoria (no se serializan). Usados para preview/PDF
+  /// antes de subir a Storage o cuando la red falla.
+  final Uint8List? fotoBytes;
   final String perfil;
   final List<PersonalData> datosPersonales;
   final List<Skill> competencias;
@@ -39,6 +45,7 @@ class Resume {
     this.fotoPath,
     this.fotoUrl,
     this.fotoStoragePath,
+    this.fotoBytes,
     required this.perfil,
     required this.datosPersonales,
     required this.competencias,
@@ -67,12 +74,15 @@ class Resume {
 
   bool get hasRemotePhoto => fotoUrl != null && fotoUrl!.isNotEmpty;
 
+  bool get hasPhotoBytes => fotoBytes != null && fotoBytes!.isNotEmpty;
+
   Resume copyWith({
     String? id,
     String? nombre,
     String? fotoPath,
     String? fotoUrl,
     String? fotoStoragePath,
+    Uint8List? fotoBytes,
     String? perfil,
     List<PersonalData>? datosPersonales,
     List<Skill>? competencias,
@@ -93,6 +103,7 @@ class Resume {
     bool clearFotoPath = false,
     bool clearFotoUrl = false,
     bool clearFotoStoragePath = false,
+    bool clearFotoBytes = false,
   }) {
     return Resume(
       id: id ?? this.id,
@@ -102,6 +113,7 @@ class Resume {
       fotoStoragePath: clearFotoStoragePath
           ? null
           : (fotoStoragePath ?? this.fotoStoragePath),
+      fotoBytes: clearFotoBytes ? null : (fotoBytes ?? this.fotoBytes),
       perfil: perfil ?? this.perfil,
       datosPersonales: datosPersonales ?? this.datosPersonales,
       competencias: competencias ?? this.competencias,
