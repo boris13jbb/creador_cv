@@ -34,7 +34,11 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
   }
 
   String _keyFor(bool isPro) =>
-      '${_resume.id}|$isPro|${_resume.designIndex}|${_resume.updatedAt?.millisecondsSinceEpoch ?? 0}|${_resume.nombre}|${_resume.experiencia.length}|${_resume.perfil.length}';
+      '${_resume.id}|$isPro|${_resume.designIndex}|'
+      '${_resume.updatedAt?.millisecondsSinceEpoch ?? 0}|${_resume.nombre}|'
+      '${_resume.experiencia.length}|${_resume.perfil.length}|'
+      '${_resume.effectivePhotoRef ?? ''}|${_resume.fotoBytes?.length ?? 0}|'
+      '${_resume.ocultarFoto}';
 
   Future<Uint8List> _buildPdf(bool isPro) async {
     final key = _keyFor(isPro);

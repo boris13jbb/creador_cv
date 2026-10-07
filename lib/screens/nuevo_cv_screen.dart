@@ -185,9 +185,19 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
       _autosaveError = null;
     });
     try {
-      await _persistResume(showSnack: false, popOnSuccess: false);
+      final photoWarning = await _persistResume(
+        showSnack: false,
+        popOnSuccess: false,
+      );
       if (!mounted) return;
-      setState(() => _autosaveStatus = _AutosaveStatus.saved);
+      setState(() {
+        if (photoWarning != null) {
+          _autosaveStatus = _AutosaveStatus.error;
+          _autosaveError = 'CV guardado. Foto: $photoWarning';
+        } else {
+          _autosaveStatus = _AutosaveStatus.saved;
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -267,36 +277,45 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     );
   }
 
-  Future<Resume> _persistResume({
+  /// Persiste el CV. Devuelve aviso de foto si Storage falló (el CV sí se guardó).
+  Future<String?> _persistResume({
     required bool showSnack,
     required bool popOnSuccess,
   }) async {
     final resume = _buildResume();
-    final saved = await DBService.instance.saveWithOptionalPhoto(
+    final outcome = await DBService.instance.saveWithOptionalPhoto(
       resume: resume,
       pendingPhotoBytes: _pendingUploadBytes,
       squareCrop: _squareCrop,
     );
-    _pendingUploadBytes = null;
+    final saved = outcome.resume;
+    // Solo limpia la foto pendiente si se subió; si falló, permite reintentar.
+    if (outcome.photoWarning == null) {
+      _pendingUploadBytes = null;
+    }
     _persistedId = saved.id;
     _fotoUrl = saved.fotoUrl;
     _fotoStoragePath = saved.fotoStoragePath;
     _fotoPath = saved.fotoPath;
     _autosaveEnabled = true;
-    if (!mounted) return saved;
+    if (!mounted) return outcome.photoWarning;
     if (showSnack) {
+      final photoIssue = outcome.photoWarning;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _autosaveEnabled && widget.resumeExistente == null
-                ? 'CV guardado. Autosave activo.'
-                : 'CV guardado correctamente',
+            photoIssue != null
+                ? 'CV guardado. Foto no subida: $photoIssue'
+                : (_autosaveEnabled && widget.resumeExistente == null
+                      ? 'CV guardado. Autosave activo.'
+                      : 'CV guardado correctamente'),
           ),
+          duration: Duration(seconds: photoIssue != null ? 6 : 3),
         ),
       );
     }
     if (popOnSuccess) context.pop(true);
-    return saved;
+    return outcome.photoWarning;
   }
 
   Future<void> _guardarCv() async {
@@ -304,9 +323,20 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     _autosaveTimer?.cancel();
     setState(() => _uploadingPhoto = true);
     try {
-      await _persistResume(showSnack: true, popOnSuccess: false);
+      final photoWarning = await _persistResume(
+        showSnack: true,
+        popOnSuccess: false,
+      );
       if (!mounted) return;
-      setState(() => _autosaveStatus = _AutosaveStatus.saved);
+      setState(() {
+        if (photoWarning != null) {
+          _autosaveStatus = _AutosaveStatus.error;
+          _autosaveError = 'CV guardado. Foto: $photoWarning';
+        } else {
+          _autosaveStatus = _AutosaveStatus.saved;
+          _autosaveError = null;
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

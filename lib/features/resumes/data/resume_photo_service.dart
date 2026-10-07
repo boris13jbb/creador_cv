@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:universal_io/io.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../models/resume.dart';
 import '../../../saas/config/saas_platform.dart';
 import '../../../saas/services/auth_service.dart';
 
@@ -98,18 +99,27 @@ class ResumePhotoService {
       return UploadedPhoto(downloadUrl: url, storagePath: path);
     } catch (e) {
       debugPrint('Storage SDK upload falló, intentando REST: $e');
-      return _uploadRest(path: path, photo: photo);
+      try {
+        return await _uploadRest(path: path, photo: photo);
+      } catch (restError) {
+        throw _mapUploadFailure(e, restError);
+      }
     }
   }
+
+  /// Token de Auth nativo o REST (Android/iOS/Web usan nativo).
+  Future<String> _authBearerToken() => AuthService.instance.getIdToken();
 
   Future<UploadedPhoto> _uploadRest({
     required String path,
     required ProcessedPhoto photo,
   }) async {
-    final session = await AuthService.instance.ensureValidRestToken();
+    final idToken = await _authBearerToken();
     final bucket = Firebase.app().options.storageBucket;
     if (bucket == null || bucket.isEmpty) {
-      throw const StorageAppException('Storage bucket no configurado.');
+      throw const StorageAppException(
+        'Storage bucket no configurado. Activa Firebase Storage en la consola.',
+      );
     }
     final encodedName = Uri.encodeComponent(path);
     final uri = Uri.parse(
@@ -119,16 +129,14 @@ class ResumePhotoService {
     final res = await http.post(
       uri,
       headers: {
-        'Authorization': 'Bearer ${session.idToken}',
+        'Authorization': 'Bearer $idToken',
         'Content-Type': photo.contentType,
       },
       body: photo.bytes,
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
       debugPrint('Storage REST ${res.statusCode}: ${res.body}');
-      throw StorageAppException(
-        'No se pudo subir la foto (${res.statusCode}).',
-      );
+      throw _storageHttpException(res.statusCode, res.body);
     }
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final token = body['downloadTokens'] as String?;
@@ -138,26 +146,100 @@ class ResumePhotoService {
     return UploadedPhoto(downloadUrl: downloadUrl, storagePath: path);
   }
 
+  StorageAppException _storageHttpException(int statusCode, String body) {
+    final lower = body.toLowerCase();
+    if (statusCode == 404 || lower.contains('not found')) {
+      return const StorageAppException(
+        'Firebase Storage no está disponible (bucket 404). '
+        'Activa Storage en la consola y despliega storage.rules.',
+      );
+    }
+    if (statusCode == 401 || statusCode == 403) {
+      return const StorageAppException(
+        'Sin permiso para subir la foto. Revisa sesión y reglas de Storage.',
+      );
+    }
+    return StorageAppException('No se pudo subir la foto ($statusCode).');
+  }
+
+  StorageAppException _mapUploadFailure(Object sdkError, Object restError) {
+    if (restError is StorageAppException) return restError;
+    final combined = '$sdkError $restError'.toLowerCase();
+    if (combined.contains('object-not-found') ||
+        combined.contains('not found') ||
+        combined.contains('-13010') ||
+        combined.contains('404')) {
+      return const StorageAppException(
+        'Firebase Storage no está disponible (bucket 404). '
+        'Activa Storage en la consola y despliega storage.rules.',
+      );
+    }
+    if (combined.contains('unauthorized') ||
+        combined.contains('permission') ||
+        combined.contains('403')) {
+      return const StorageAppException(
+        'Sin permiso para subir la foto. Revisa sesión y reglas de Storage.',
+      );
+    }
+    return StorageAppException(
+      'No se pudo subir la foto: ${restError.toString().replaceFirst('Exception: ', '')}',
+    );
+  }
+
   Future<void> deleteIfExists(String? storagePath) async {
     if (storagePath == null || storagePath.isEmpty) return;
     try {
       if (saasUseRestBackend) {
-        final session = await AuthService.instance.ensureValidRestToken();
+        final idToken = await _authBearerToken();
         final bucket = Firebase.app().options.storageBucket;
         if (bucket == null) return;
         final uri = Uri.parse(
           'https://firebasestorage.googleapis.com/v0/b/$bucket/o/${Uri.encodeComponent(storagePath)}',
         );
-        await http.delete(
-          uri,
-          headers: {'Authorization': 'Bearer ${session.idToken}'},
-        );
+        await http.delete(uri, headers: {'Authorization': 'Bearer $idToken'});
         return;
       }
       await FirebaseStorage.instance.ref(storagePath).delete();
     } catch (e) {
       debugPrint('deleteIfExists: $e');
     }
+  }
+
+  /// Carga bytes de la foto del CV: memoria → Storage autenticado → URL/archivo.
+  Future<Uint8List?> loadBytesForResume(Resume resume) async {
+    if (resume.hasPhotoBytes) return resume.fotoBytes;
+
+    final storagePath = resume.fotoStoragePath;
+    if (storagePath != null && storagePath.isNotEmpty) {
+      try {
+        final fromStorage = await _downloadStorageObject(storagePath);
+        if (fromStorage != null && fromStorage.isNotEmpty) return fromStorage;
+      } catch (e) {
+        debugPrint('loadBytesForResume storage: $e');
+      }
+    }
+
+    return loadBytes(resume.effectivePhotoRef);
+  }
+
+  Future<Uint8List?> _downloadStorageObject(String path) async {
+    if (saasUseRestBackend) {
+      final idToken = await _authBearerToken();
+      final bucket = Firebase.app().options.storageBucket;
+      if (bucket == null || bucket.isEmpty) return null;
+      final uri = Uri.parse(
+        'https://firebasestorage.googleapis.com/v0/b/$bucket/o/${Uri.encodeComponent(path)}?alt=media',
+      );
+      final res = await http.get(
+        uri,
+        headers: {'Authorization': 'Bearer $idToken'},
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return Uint8List.fromList(res.bodyBytes);
+      }
+      return null;
+    }
+    return FirebaseStorage.instance.ref(path).getData(maxSourceBytes);
   }
 
   /// Carga bytes desde URL remota, data-URI o archivo local.

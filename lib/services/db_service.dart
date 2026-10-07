@@ -14,7 +14,7 @@ class DBService implements ResumeRepository {
 
   Future<void> insertarResume(Resume resume) => _cloud.insertarResume(resume);
 
-  Future<Resume> saveWithOptionalPhoto({
+  Future<ResumeSaveOutcome> saveWithOptionalPhoto({
     required Resume resume,
     List<int>? pendingPhotoBytes,
     bool squareCrop = true,
