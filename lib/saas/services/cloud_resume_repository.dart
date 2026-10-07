@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../core/errors/app_exception.dart';
+import '../../core/utils/firestore_map_utils.dart';
 import '../../features/resumes/data/resume_photo_service.dart';
 import '../../features/resumes/data/resume_repository.dart';
 import '../../models/resume.dart';
@@ -161,12 +162,36 @@ class CloudResumeRepository implements ResumeRepository {
       await _assertServerAllowsNewResume();
     }
 
-    final data = resume.toFirestoreMap(userId: _uid);
+    final docId = resume.id.trim();
+    if (docId.isEmpty || docId.contains('/')) {
+      throw const ValidationAppException(
+        'Identificador de CV inválido. Cierra y vuelve a abrir el CV.',
+      );
+    }
+    if (_uid.isEmpty) {
+      throw const AuthAppException('Debes iniciar sesión para continuar.');
+    }
+
+    // Quitar nulls antes de añadir FieldValue: evita invalid-argument en Android.
+    final data = stripNullsForFirestore(resume.toFirestoreMap(userId: _uid));
+    data['id'] = docId;
+    data['userId'] = _uid;
+    // Limpia data-URI legacy sin enviar `null` crudo al SDK.
+    if (!data.containsKey('fotoPath')) {
+      data['fotoPath'] = FieldValue.delete();
+    }
     data['updatedAtServer'] = FieldValue.serverTimestamp();
     if (resume.createdAt == null) {
       data['createdAtServer'] = FieldValue.serverTimestamp();
     }
-    await _col.doc(resume.id).set(data, SetOptions(merge: true));
+    await _col.doc(docId).set(data, SetOptions(merge: true));
+  }
+
+  /// Siempre usa el id del path del documento (evita id vacío en el mapa).
+  Resume _resumeFromDoc(String docId, Map<String, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+    map['id'] = docId;
+    return Resume.fromMap(map);
   }
 
   @override
@@ -196,11 +221,7 @@ class CloudResumeRepository implements ResumeRepository {
     final docs = snap.docs;
     final hasMore = docs.length > pageSize;
     final pageDocs = hasMore ? docs.sublist(0, pageSize) : docs;
-    final items = pageDocs.map((d) {
-      final map = Map<String, dynamic>.from(d.data());
-      map.putIfAbsent('id', () => d.id);
-      return Resume.fromMap(map);
-    }).toList();
+    final items = pageDocs.map((d) => _resumeFromDoc(d.id, d.data())).toList();
 
     String? next;
     if (hasMore && items.isNotEmpty) {
@@ -224,11 +245,7 @@ class CloudResumeRepository implements ResumeRepository {
       return FirestoreRestClient.instance.listResumes(session);
     }
     final snap = await _col.orderBy('updatedAt', descending: true).get();
-    return snap.docs.map((d) {
-      final map = Map<String, dynamic>.from(d.data());
-      map.putIfAbsent('id', () => d.id);
-      return Resume.fromMap(map);
-    }).toList();
+    return snap.docs.map((d) => _resumeFromDoc(d.id, d.data())).toList();
   }
 
   @override
@@ -245,9 +262,7 @@ class CloudResumeRepository implements ResumeRepository {
     }
     final snap = await _col.doc(id).get();
     if (!snap.exists || snap.data() == null) return null;
-    final map = Map<String, dynamic>.from(snap.data()!);
-    map.putIfAbsent('id', () => snap.id);
-    return Resume.fromMap(map);
+    return _resumeFromDoc(snap.id, snap.data()!);
   }
 
   @override

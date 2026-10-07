@@ -445,13 +445,21 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Center(
-                child: Text(
-                  _autosaveLabel,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _autosaveStatus == _AutosaveStatus.error
-                        ? AppColors.danger
-                        : AppColors.inkMuted,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.32,
+                  ),
+                  child: Text(
+                    _autosaveLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _autosaveStatus == _AutosaveStatus.error
+                          ? AppColors.danger
+                          : AppColors.inkMuted,
+                    ),
                   ),
                 ),
               ),

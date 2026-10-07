@@ -163,14 +163,19 @@ class Resume {
   }
 
   /// Mapa para Firestore schema v3 (listas nativas, sin Base64 gigante obligatorio).
+  ///
+  /// Omite campos opcionales nulos: el SDK nativo puede fallar con
+  /// `invalid-argument` si se mezclan `null` y `FieldValue` en el mismo `set`.
   Map<String, dynamic> toFirestoreMap({required String userId}) {
     final now = DateTime.now().toIso8601String();
+    final fotoPath = _legacyFotoPathForWrite();
     return {
       'id': id,
       'nombre': nombre,
-      'fotoPath': _legacyFotoPathForWrite(),
-      'fotoUrl': fotoUrl,
-      'fotoStoragePath': fotoStoragePath,
+      if (fotoPath != null) 'fotoPath': fotoPath,
+      if (fotoUrl != null && fotoUrl!.isNotEmpty) 'fotoUrl': fotoUrl,
+      if (fotoStoragePath != null && fotoStoragePath!.isNotEmpty)
+        'fotoStoragePath': fotoStoragePath,
       'perfil': perfil,
       'datosPersonales': datosPersonales.map((d) => d.toMap()).toList(),
       'competencias': competencias.map((s) => s.toMap()).toList(),
@@ -450,10 +455,11 @@ class Project {
     'name': name,
     'description': description,
     'technologies': technologies,
-    'url': url,
-    'repositoryUrl': repositoryUrl,
-    'startDate': startDate,
-    'endDate': endDate,
+    if (url != null && url!.isNotEmpty) 'url': url,
+    if (repositoryUrl != null && repositoryUrl!.isNotEmpty)
+      'repositoryUrl': repositoryUrl,
+    if (startDate != null && startDate!.isNotEmpty) 'startDate': startDate,
+    if (endDate != null && endDate!.isNotEmpty) 'endDate': endDate,
     'isOngoing': isOngoing,
   };
 
@@ -568,11 +574,15 @@ class Certification {
     'id': id,
     'name': name,
     'institution': institution,
-    'date': date,
-    'expirationDate': expirationDate,
-    'credentialId': credentialId,
-    'credentialUrl': credentialUrl,
-    'description': description,
+    if (date != null && date!.isNotEmpty) 'date': date,
+    if (expirationDate != null && expirationDate!.isNotEmpty)
+      'expirationDate': expirationDate,
+    if (credentialId != null && credentialId!.isNotEmpty)
+      'credentialId': credentialId,
+    if (credentialUrl != null && credentialUrl!.isNotEmpty)
+      'credentialUrl': credentialUrl,
+    if (description != null && description!.isNotEmpty)
+      'description': description,
   };
 
   Map<String, dynamic> toJson() => toMap();
@@ -650,8 +660,9 @@ class Aptitude {
   Map<String, dynamic> toMap() => {
     'id': id,
     'name': name,
-    'level': level,
-    'description': description,
+    if (level != null) 'level': level,
+    if (description != null && description!.isNotEmpty)
+      'description': description,
   };
 
   Map<String, dynamic> toJson() => toMap();

@@ -64,6 +64,14 @@ class ErrorMapper {
         lower.contains('sesión expiró')) {
       return AuthAppException(text);
     }
+    if (lower.contains('invalid-argument') ||
+        lower.contains('invalid argument') ||
+        lower.contains('invalid field')) {
+      return const AppException(
+        'No se pudo guardar el CV (datos inválidos). Revisa e inténtalo de nuevo.',
+        code: 'invalid-argument',
+      );
+    }
     return AppException(text, cause: error);
   }
 
