@@ -436,8 +436,6 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     _markDirty();
   }
 
-  static const _designLabels = ['Clásico', 'Moderno', 'Ejecutivo', 'Creativo'];
-
   @override
   Widget build(BuildContext context) {
     final desktop = AppLayout.of(context) == AppLayoutType.desktop;
@@ -593,7 +591,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: Text(
-                  'Free: Clásico y Moderno. Ejecutiva/Creativa requieren Pro.',
+                  'Free: Clásico y Moderno. Ejecutiva, Creativa y One Page requieren Pro.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -601,10 +599,12 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
               spacing: 16,
               runSpacing: 16,
               children: [
-                _buildDesignOption(0, 'Diseño Clásico', isPro),
-                _buildDesignOption(1, 'Diseño Moderno', isPro),
-                _buildDesignOption(2, 'Diseño Ejecutivo', isPro),
-                _buildDesignOption(3, 'Diseño Creativo', isPro),
+                for (final template in CvTemplates.all)
+                  _buildDesignOption(
+                    template.designIndex,
+                    template.name,
+                    isPro,
+                  ),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
@@ -908,7 +908,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   }
 
   Widget _buildDesktopSummaryPanel() {
-    final design = _designLabels[_designIndex.clamp(0, 3)];
+    final design = CvTemplates.byIndex(_designIndex).name;
     return ColoredBox(
       color: AppColors.surface,
       child: ListView(
@@ -1057,7 +1057,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
                     0 => AppColors.emerald,
                     1 => AppColors.navyMid,
                     2 => AppColors.navy,
-                    _ => AppColors.amber,
+                    3 => AppColors.amber,
+                    _ => AppColors.emeraldBright,
                   },
                 ),
                 const SizedBox(height: 8),

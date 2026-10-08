@@ -50,11 +50,12 @@ Resume _sample({
 
 void main() {
   group('CvTemplates acceso Free/Pro', () {
-    test('Free no puede usar Ejecutivo ni Creativo', () {
+    test('Free no puede usar Ejecutivo, Creativo ni One Page', () {
       expect(CvTemplates.canUseDesign(0, isPro: false), isTrue);
       expect(CvTemplates.canUseDesign(1, isPro: false), isTrue);
       expect(CvTemplates.canUseDesign(2, isPro: false), isFalse);
       expect(CvTemplates.canUseDesign(3, isPro: false), isFalse);
+      expect(CvTemplates.canUseDesign(4, isPro: false), isFalse);
     });
 
     test('resolveDesignIndex cae a Clásico para Free+Pro', () {

@@ -16,7 +16,7 @@ class CvTemplateInfo {
 }
 
 /// Hint tipográfico para evitar importar Flutter en tests puros de metadatos.
-enum IconDataHint { description, dashboard, business, palette }
+enum IconDataHint { description, dashboard, business, palette, columns }
 
 abstract final class CvTemplates {
   static const freeFallbackIndex = 0;
@@ -47,6 +47,13 @@ abstract final class CvTemplates {
       description: 'Bloques visuales y acento fuerte',
       requiresPro: true,
       icon: IconDataHint.palette,
+    ),
+    CvTemplateInfo(
+      designIndex: 4,
+      name: 'One Page',
+      description: 'Una página A4, sidebar y contenido en dos columnas',
+      requiresPro: true,
+      icon: IconDataHint.columns,
     ),
   ];
 

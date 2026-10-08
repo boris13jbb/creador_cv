@@ -1,19 +1,24 @@
 import 'package:creador_cv/features/templates/cv_template_thumbnail.dart';
+import 'package:creador_cv/features/templates/cv_templates.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('CvTemplateThumbnail construye las 4 plantillas', (tester) async {
+  testWidgets('CvTemplateThumbnail construye todas las plantillas', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: Column(
               children: [
-                for (var i = 0; i < 4; i++)
+                for (final template in CvTemplates.all)
                   SizedBox(
                     height: 220,
-                    child: CvTemplateThumbnail(designIndex: i),
+                    child: CvTemplateThumbnail(
+                      designIndex: template.designIndex,
+                    ),
                   ),
               ],
             ),
@@ -22,7 +27,10 @@ void main() {
       ),
     );
 
-    expect(find.byType(CvTemplateThumbnail), findsNWidgets(4));
+    expect(
+      find.byType(CvTemplateThumbnail),
+      findsNWidgets(CvTemplates.all.length),
+    );
   });
 
   testWidgets('CvTemplateThumbnail locked muestra candado', (tester) async {

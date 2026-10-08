@@ -34,8 +34,8 @@ class TemplatesGalleryScreen extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             Text(
               isPro
-                  ? 'Tu plan Pro incluye las 4 plantillas profesionales.'
-                  : 'Free: Clásico y Moderno. Ejecutiva y Creativa requieren Pro.',
+                  ? 'Tu plan Pro incluye las 5 plantillas profesionales.'
+                  : 'Free: Clásico y Moderno. Ejecutiva, Creativa y One Page requieren Pro.',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -91,7 +91,8 @@ class TemplatesGalleryScreen extends StatelessWidget {
                                     0 => AppColors.emerald,
                                     1 => AppColors.navyMid,
                                     2 => AppColors.navy,
-                                    _ => AppColors.amber,
+                                    3 => AppColors.amber,
+                                    _ => AppColors.emeraldBright,
                                   },
                                 ),
                               ),
