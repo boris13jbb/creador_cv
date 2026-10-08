@@ -5,6 +5,7 @@ import 'classic_pdf_generator.dart';
 import 'creative_pdf_generator.dart';
 import 'executive_pdf_generator.dart';
 import 'modern_pdf_generator.dart';
+import 'professional_one_page_pdf_generator.dart';
 
 /// Fachada de generación PDF. Aplica bloqueo Free/Pro y MultiPage por plantilla.
 class ResumePdfService {
@@ -33,6 +34,8 @@ class ResumePdfService {
         return generateExecutivePdf(effective);
       case 3:
         return generateCreativePdf(effective);
+      case 4:
+        return generateProfessionalOnePagePdf(effective);
       default:
         return generateClassicPdf(effective);
     }

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_tokens.dart';
 
 /// Miniatura esquemática de cada plantilla PDF (sin assets estáticos).
-/// Refleja la estructura real: Clásico, Moderno, Ejecutivo, Creativo.
+/// Refleja la estructura real: Clásico, Moderno, Ejecutivo, Creativo y One Page.
 class CvTemplateThumbnail extends StatelessWidget {
   const CvTemplateThumbnail({
     super.key,
@@ -20,11 +20,12 @@ class CvTemplateThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final preview = switch (designIndex.clamp(0, 3)) {
+    final preview = switch (designIndex) {
       0 => _ClassicMini(accent: _accent),
       1 => _ModernMini(accent: _accent),
       2 => _ExecutiveMini(accent: _accent),
-      _ => _CreativeMini(accent: _accent),
+      3 => _CreativeMini(accent: _accent),
+      _ => _OnePageMini(accent: _accent),
     };
 
     return AspectRatio(
@@ -379,6 +380,96 @@ class _CreativeMini extends StatelessWidget {
                 _SectionBlock(accent: accent),
                 const SizedBox(height: 8),
                 _SectionBlock(accent: accent, lines: 3),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One Page: sidebar de color, foto y contenido a la derecha.
+class _OnePageMini extends StatelessWidget {
+  const _OnePageMini({required this.accent});
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: 32,
+          child: ColoredBox(
+            color: accent,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 2,
+                    width: 36,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                  const SizedBox(height: 3),
+                  Container(
+                    height: 2,
+                    width: 28,
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 3,
+                    width: 40,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                  const SizedBox(height: 4),
+                  for (var i = 0; i < 3; i++) ...[
+                    Container(
+                      height: 2,
+                      width: double.infinity,
+                      color: Colors.white.withValues(alpha: 0.45),
+                    ),
+                    const SizedBox(height: 2),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 68,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(height: 6, width: 72, color: accent),
+                const SizedBox(height: 3),
+                Container(
+                  height: 2.5,
+                  width: 48,
+                  color: const Color(0xFF9CA3AF),
+                ),
+                const SizedBox(height: 4),
+                Container(height: 1, color: accent),
+                const SizedBox(height: 6),
+                _SectionBlock(accent: accent, lines: 3),
+                const SizedBox(height: 6),
+                _SectionBlock(accent: accent),
               ],
             ),
           ),
