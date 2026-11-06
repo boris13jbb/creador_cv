@@ -50,14 +50,27 @@ class ResumePhotoService {
       );
     }
 
-    final decoded = img.decodeImage(source);
+    img.Image? decoded;
+    try {
+      decoded = img.decodeImage(source);
+    } catch (_) {
+      decoded = null;
+    }
     if (decoded == null) {
       throw const ValidationAppException(
         'Formato de imagen no válido. Usa JPG, PNG o WebP.',
       );
     }
 
-    var work = decoded;
+    // La orientación EXIF se aplica antes del recorte para no cortar la cara
+    // sobre los píxeles sin rotar.
+    img.Image work = decoded;
+    try {
+      work = img.bakeOrientation(decoded);
+    } catch (e) {
+      // Un EXIF dañado no debe rechazar una imagen que ya se pudo leer.
+      debugPrint('bakeOrientation: $e');
+    }
     if (squareCrop) {
       final side = work.width < work.height ? work.width : work.height;
       final x = (work.width - side) ~/ 2;
@@ -75,6 +88,15 @@ class ResumePhotoService {
 
     final jpg = Uint8List.fromList(img.encodeJpg(work, quality: jpegQuality));
     return ProcessedPhoto(bytes: jpg);
+  }
+
+  /// `null` significa que el usuario canceló el selector.
+  ProcessedPhoto? processGalleryPick(
+    Uint8List? raw, {
+    required bool squareCrop,
+  }) {
+    if (raw == null) return null;
+    return processBytes(raw, squareCrop: squareCrop);
   }
 
   String storagePathFor({required String uid, required String resumeId}) =>
@@ -264,5 +286,69 @@ class ResumePhotoService {
       debugPrint('loadBytes: $e');
     }
     return null;
+  }
+}
+
+/// Estado de la fotografía en el editor.
+///
+/// Vive en la pantalla completa, no en una sección, para que cambiar de
+/// apartado no la descarte.
+class CvPhotoDraft {
+  final Uint8List? bytes;
+  final Uint8List? pendingUploadBytes;
+  final String? fotoUrl;
+  final String? fotoPath;
+  final String? fotoStoragePath;
+  final bool ocultarFoto;
+  final bool clearStoredPhoto;
+
+  const CvPhotoDraft({
+    this.bytes,
+    this.pendingUploadBytes,
+    this.fotoUrl,
+    this.fotoPath,
+    this.fotoStoragePath,
+    this.ocultarFoto = false,
+    this.clearStoredPhoto = false,
+  });
+
+  bool get hasStoredReference =>
+      (fotoUrl != null && fotoUrl!.isNotEmpty) ||
+      (fotoStoragePath != null && fotoStoragePath!.isNotEmpty);
+
+  /// Bytes descargados al abrir el CV. No pisan una selección que aún no se subió.
+  CvPhotoDraft withLoadedBytes(Uint8List bytes) {
+    if (pendingUploadBytes != null) return this;
+    return CvPhotoDraft(
+      bytes: bytes,
+      pendingUploadBytes: pendingUploadBytes,
+      fotoUrl: fotoUrl,
+      fotoPath: fotoPath,
+      fotoStoragePath: fotoStoragePath,
+      ocultarFoto: ocultarFoto,
+      clearStoredPhoto: clearStoredPhoto,
+    );
+  }
+
+  CvPhotoDraft accept(ProcessedPhoto photo) {
+    return CvPhotoDraft(
+      bytes: photo.bytes,
+      pendingUploadBytes: photo.bytes,
+      fotoUrl: fotoUrl,
+      fotoPath: null,
+      fotoStoragePath: fotoStoragePath,
+      ocultarFoto: false,
+      clearStoredPhoto: false,
+    );
+  }
+
+  CvPhotoDraft remove() {
+    return const CvPhotoDraft(
+      fotoUrl: '',
+      fotoPath: '',
+      fotoStoragePath: '',
+      ocultarFoto: true,
+      clearStoredPhoto: true,
+    );
   }
 }

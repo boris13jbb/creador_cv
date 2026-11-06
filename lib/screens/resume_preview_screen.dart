@@ -9,8 +9,10 @@ import '../core/observability/app_observability.dart';
 import '../core/routing/app_router.dart';
 import '../core/theme/app_tokens.dart';
 import '../features/templates/cv_templates.dart';
+import '../features/resumes/data/resume_photo_service.dart';
 import '../models/resume.dart';
 import '../saas/providers/auth_controller.dart';
+import '../services/db_service.dart';
 import '../services/resume_pdf_service.dart';
 
 class ResumePreviewScreen extends StatefulWidget {
@@ -27,10 +29,81 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
   Uint8List? _cachedPdf;
   String? _cacheKey;
 
+  bool _photoLoadWarned = false;
+
   @override
   void initState() {
     super.initState();
     _resume = widget.resume;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _attachStoredPhoto();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ResumePreviewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.resume, widget.resume)) {
+      _resume = widget.resume;
+      _cachedPdf = null;
+      _cacheKey = null;
+    }
+  }
+
+  /// La vista previa recibe el CV sin los bytes (no se guardan en Firestore).
+  Future<void> _attachStoredPhoto() async {
+    if (!mounted || _resume.ocultarFoto || _resume.hasPhotoBytes) return;
+    final hasStoredPhoto =
+        (_resume.effectivePhotoRef != null &&
+            _resume.effectivePhotoRef!.isNotEmpty) ||
+        (_resume.fotoStoragePath != null &&
+            _resume.fotoStoragePath!.isNotEmpty);
+    if (!hasStoredPhoto) return;
+    final bytes = await ResumePhotoService.instance.loadBytesForResume(_resume);
+    if (!mounted) return;
+    if (bytes == null || bytes.isEmpty) {
+      if (_photoLoadWarned) return;
+      _photoLoadWarned = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo cargar la fotografía guardada de este CV.'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _resume = _resume.copyWith(fotoBytes: bytes);
+      _cachedPdf = null;
+      _cacheKey = null;
+    });
+  }
+
+  /// La vista previa que ya estaba abierta debe tomar el CV editado.
+  ///
+  /// Si no, sigue generando el PDF con el designIndex anterior.
+  Future<void> _openEditor() async {
+    final result = await context.push<Object?>('/resumes/edit', extra: _resume);
+    if (!mounted) return;
+    final edited = await _resumeAfterEdit(result);
+    if (!mounted || edited == null) return;
+    setState(() {
+      _resume = edited;
+      _cachedPdf = null;
+      _cacheKey = null;
+    });
+  }
+
+  Future<Resume?> _resumeAfterEdit(Object? result) async {
+    if (result is Resume) {
+      if (result.fotoBytes == null && _resume.fotoBytes != null) {
+        return result.copyWith(fotoBytes: _resume.fotoBytes);
+      }
+      return result;
+    }
+    final stored = await DBService.instance.getById(_resume.id);
+    if (stored == null) return null;
+    if (_resume.fotoBytes == null) return stored;
+    return stored.copyWith(fotoBytes: _resume.fotoBytes);
   }
 
   String _keyFor(bool isPro) =>
@@ -97,29 +170,11 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
           Semantics(
             label: 'Editar CV',
             button: true,
-            onTap: () async {
-              final result = await context.push<bool>(
-                '/resumes/edit',
-                extra: _resume,
-              );
-              if (!mounted) return;
-              if (result == true && context.mounted) {
-                context.pop(true);
-              }
-            },
+            onTap: _openEditor,
             child: IconButton(
               icon: const Icon(Icons.edit),
               tooltip: 'Editar CV',
-              onPressed: () async {
-                final result = await context.push<bool>(
-                  '/resumes/edit',
-                  extra: _resume,
-                );
-                if (!mounted) return;
-                if (result == true && context.mounted) {
-                  context.pop(true);
-                }
-              },
+              onPressed: _openEditor,
             ),
           ),
           Semantics(

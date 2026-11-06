@@ -13,6 +13,7 @@ import '../core/utils/list_edit.dart';
 import '../core/utils/url_validators.dart';
 import '../core/widgets/app_layout.dart';
 import '../features/resumes/data/resume_photo_service.dart';
+import '../features/resumes/forms/editor_dropdown_choices.dart';
 import '../features/templates/cv_template_thumbnail.dart';
 import '../features/templates/cv_templates.dart';
 import '../models/resume.dart';
@@ -35,7 +36,8 @@ class NuevoCvScreen extends StatefulWidget {
   State<NuevoCvScreen> createState() => _NuevoCvScreenState();
 }
 
-class _NuevoCvScreenState extends State<NuevoCvScreen> {
+class _NuevoCvScreenState extends State<NuevoCvScreen>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
   final _perfilController = TextEditingController();
@@ -50,12 +52,16 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
 
   Color _colorSeleccionado = const Color(0xFF1A1A2E);
   int _designIndex = 0;
+  bool _leavingEditor = false;
 
   int get colorHex => _colorSeleccionado.toARGB32();
 
   ImageProvider? get _avatarImage {
-    if (_fotoBytes != null) return MemoryImage(_fotoBytes!);
-    if (_fotoUrl != null) return NetworkImage(_fotoUrl!);
+    if (_fotoBytes != null && _fotoBytes!.isNotEmpty) {
+      return MemoryImage(_fotoBytes!);
+    }
+    final url = _fotoUrl;
+    if (url != null && url.isNotEmpty) return NetworkImage(url);
     return null;
   }
 
@@ -97,24 +103,13 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     Colors.black,
   ];
 
-  final Map<String, String> _iconosDisponibles = {
-    'person': '👤 Perfil',
-    'email': '📧 Email',
-    'phone': '📞 Teléfono',
-    'home': '🏠 Dirección',
-    'work': '💼 Trabajo',
-    'school': '🎓 Educación',
-    'language': '🌐 Idioma',
-    'link': '🔗 Enlace/Web',
-    'facebook': 'f Facebook',
-    'instagram': 'i Instagram',
-    'linkedin': 'in LinkedIn',
-    'github': 'gh GitHub',
-  };
+  bool _awaitingGallery = false;
+  bool _recoveringLostPhoto = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final r = widget.resumeExistente;
     if (r != null) {
       _persistedId = r.id;
@@ -182,7 +177,15 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           !CvTemplates.canUseDesign(_designIndex, isPro: isPro)) {
         setState(() => _designIndex = CvTemplates.freeFallbackIndex);
       }
+      _recoverLostPhoto();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _awaitingGallery) {
+      _recoverLostPhoto();
+    }
   }
 
   void _onFormChanged() => _markDirty();
@@ -236,6 +239,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autosaveTimer?.cancel();
     _nombreController.removeListener(_onFormChanged);
     _perfilController.removeListener(_onFormChanged);
@@ -245,35 +249,122 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
   }
 
   Future<void> _loadExistingPhoto(Resume r) async {
-    final bytes = await ResumePhotoService.instance.loadBytes(
-      r.effectivePhotoRef,
-    );
-    if (!mounted || bytes == null) return;
-    setState(() => _fotoBytes = bytes);
+    final hasStoredPhoto =
+        (r.effectivePhotoRef != null && r.effectivePhotoRef!.isNotEmpty) ||
+        (r.fotoStoragePath != null && r.fotoStoragePath!.isNotEmpty);
+    if (!hasStoredPhoto) return;
+    final bytes = await ResumePhotoService.instance.loadBytesForResume(r);
+    if (!mounted || _pendingUploadBytes != null) return;
+    if (bytes == null || bytes.isEmpty) {
+      _showPhotoMessage(
+        'No se pudo cargar la fotografía guardada. Puedes elegir otra.',
+      );
+      return;
+    }
+    setState(() => _applyPhotoDraft(_photoDraft.withLoadedBytes(bytes)));
+  }
+
+  bool _clearStoredPhoto = false;
+
+  bool get _hasVisiblePhoto =>
+      _fotoBytes != null || (_fotoUrl != null && _fotoUrl!.isNotEmpty);
+
+  void _showPhotoMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _seleccionarFoto() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile == null) return;
+    if (_awaitingGallery) return;
+    _awaitingGallery = true;
     try {
-      final raw = await pickedFile.readAsBytes();
-      final processed = ResumePhotoService.instance.processBytes(
-        raw,
-        squareCrop: _squareCrop,
+      final picker = ImagePicker();
+      // El plugin de Android decodifica HEIC y fotos grandes a JPEG.
+      // Sin estos límites, el archivo original puede fallar al leerse.
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 90,
+        requestFullMetadata: false,
       );
-      setState(() {
-        _fotoBytes = processed.bytes;
-        _pendingUploadBytes = processed.bytes;
-        _fotoPath = null;
-      });
-      _markDirty();
-    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(ErrorMapper.messageOf(e))));
+      if (pickedFile == null) {
+        await _recoverLostPhoto();
+        return;
+      }
+      await _applyPickedFile(pickedFile);
+    } catch (e, st) {
+      debugPrint('seleccionarFoto: $e\n$st');
+      _showPhotoMessage(ErrorMapper.messageOf(e));
+    } finally {
+      _awaitingGallery = false;
     }
+  }
+
+  /// Android puede destruir la actividad al abrir la galería. La foto queda
+  /// en la caché del plugin y hay que recuperarla al volver.
+  Future<void> _recoverLostPhoto() async {
+    if (_recoveringLostPhoto) return;
+    _recoveringLostPhoto = true;
+    try {
+      final lost = await ImagePicker().retrieveLostData();
+      if (!mounted || lost.isEmpty) return;
+      final error = lost.exception;
+      if (error != null) {
+        debugPrint('retrieveLostData: ${error.code} ${error.message}');
+        _showPhotoMessage(ErrorMapper.messageOf(error));
+        return;
+      }
+      final file = lost.file;
+      if (file == null || lost.type == RetrieveType.video) return;
+      _awaitingGallery = false;
+      await _applyPickedFile(file);
+    } on UnimplementedError {
+      // Escritorio y web no conservan una selección interrumpida.
+    } catch (e, st) {
+      debugPrint('recoverLostPhoto: $e\n$st');
+    } finally {
+      _recoveringLostPhoto = false;
+    }
+  }
+
+  Future<void> _applyPickedFile(XFile pickedFile) async {
+    final raw = await pickedFile.readAsBytes();
+    final processed = ResumePhotoService.instance.processGalleryPick(
+      raw,
+      squareCrop: _squareCrop,
+    );
+    if (!mounted || processed == null) return;
+    setState(() => _applyPhotoDraft(_photoDraft.accept(processed)));
+    _markDirty();
+  }
+
+  CvPhotoDraft get _photoDraft => CvPhotoDraft(
+    bytes: _fotoBytes,
+    pendingUploadBytes: _pendingUploadBytes,
+    fotoUrl: _fotoUrl,
+    fotoPath: _fotoPath,
+    fotoStoragePath: _fotoStoragePath,
+    ocultarFoto: _ocultarFoto,
+    clearStoredPhoto: _clearStoredPhoto,
+  );
+
+  void _applyPhotoDraft(CvPhotoDraft draft) {
+    _fotoBytes = draft.bytes;
+    _pendingUploadBytes = draft.pendingUploadBytes;
+    _fotoUrl = draft.fotoUrl;
+    _fotoPath = draft.fotoPath;
+    _fotoStoragePath = draft.fotoStoragePath;
+    _ocultarFoto = draft.ocultarFoto;
+    _clearStoredPhoto = draft.clearStoredPhoto;
+  }
+
+  void _quitarFoto() {
+    setState(() => _applyPhotoDraft(_photoDraft.remove()));
+    _markDirty();
   }
 
   Resume _buildResume() {
@@ -282,9 +373,9 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
       id: id,
       nombre: _nombreController.text,
       perfil: _perfilController.text,
-      fotoPath: _fotoPath,
-      fotoUrl: _fotoUrl,
-      fotoStoragePath: _fotoStoragePath,
+      fotoPath: _clearStoredPhoto ? '' : _fotoPath,
+      fotoUrl: _clearStoredPhoto ? '' : _fotoUrl,
+      fotoStoragePath: _clearStoredPhoto ? '' : _fotoStoragePath,
       datosPersonales: _datosPersonales
           .where((d) => d.value.isNotEmpty)
           .toList(),
@@ -297,6 +388,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
       aptitudes: List<Aptitude>.from(_aptitudes),
       colorHex: _colorSeleccionado.toARGB32(),
       designIndex: _designIndex,
+      fotoBytes: _fotoBytes,
       ocultarFoto: _ocultarFoto,
       ocultarPerfil: _ocultarPerfil,
       ocultarExperiencia: _ocultarExperiencia,
@@ -347,8 +439,31 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
         ),
       );
     }
-    if (popOnSuccess) context.pop(true);
+    if (popOnSuccess) context.pop(_buildResume());
     return outcome.photoWarning;
+  }
+
+  /// Al salir del editor devuelve el CV en memoria, con la plantilla elegida.
+  ///
+  /// La vista previa que abrió Editar conserva el objeto anterior. Si no se le
+  /// entrega este Resume, sigue generando el PDF con el designIndex viejo.
+  Future<void> _returnEditedResume() async {
+    if (_leavingEditor) return;
+    _leavingEditor = true;
+    _autosaveTimer?.cancel();
+    try {
+      final editingExisting =
+          widget.resumeExistente != null || _persistedId != null;
+      if (editingExisting &&
+          _nombreController.text.trim().isNotEmpty &&
+          !_uploadingPhoto) {
+        await _persistResume(showSnack: false, popOnSuccess: false);
+      }
+    } catch (e, st) {
+      debugPrint('returnEditedResume: $e\n$st');
+    }
+    if (!mounted) return;
+    context.pop(_buildResume());
   }
 
   Future<void> _guardarCv() async {
@@ -441,98 +556,53 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
     final desktop = AppLayout.of(context) == AppLayoutType.desktop;
     final isPro = context.watch<AuthController>().isPro;
 
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
-          if (!_uploadingPhoto) {
-            _guardarCv();
-          }
-        },
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || _leavingEditor) return;
+        _returnEditedResume();
       },
-      child: Focus(
-        autofocus: true,
-        child: Scaffold(
-          appBar: AppBar(
-            title: Text(
-              widget.resumeExistente != null || _persistedId != null
-                  ? 'Editar CV'
-                  : 'Crear CV Profesional',
-            ),
-            actions: [
-              if (_autosaveLabel.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: MediaQuery.sizeOf(context).width * 0.32,
-                      ),
-                      child: Text(
-                        _autosaveLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _autosaveStatus == _AutosaveStatus.error
-                              ? AppColors.danger
-                              : AppColors.inkMuted,
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+            if (!_uploadingPhoto) {
+              _guardarCv();
+            }
+          },
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(
+                widget.resumeExistente != null || _persistedId != null
+                    ? 'Editar CV'
+                    : 'Crear CV Profesional',
+              ),
+              actions: [
+                if (_autosaveLabel.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width * 0.32,
+                        ),
+                        child: Text(
+                          _autosaveLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _autosaveStatus == _AutosaveStatus.error
+                                ? AppColors.danger
+                                : AppColors.inkMuted,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              Semantics(
-                label: 'Guardar CV',
-                button: true,
-                enabled: !_uploadingPhoto,
-                onTap: _uploadingPhoto
-                    ? null
-                    : () {
-                        _guardarCv();
-                      },
-                child: IconButton(
-                  icon: const Icon(Icons.save),
-                  tooltip: 'Guardar CV',
-                  onPressed: _uploadingPhoto ? null : _guardarCv,
-                ),
-              ),
-              Semantics(
-                label: 'Ver PDF',
-                button: true,
-                enabled: !_uploadingPhoto,
-                onTap: _uploadingPhoto
-                    ? null
-                    : () {
-                        _generarPreview();
-                      },
-                child: IconButton(
-                  icon: const Icon(Icons.picture_as_pdf),
-                  tooltip: 'Ver PDF',
-                  onPressed: _uploadingPhoto ? null : _generarPreview,
-                ),
-              ),
-            ],
-          ),
-          body: Form(
-            key: _formKey,
-            child: desktop
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(flex: 3, child: _buildFormScroll(isPro)),
-                      const VerticalDivider(width: 1),
-                      SizedBox(width: 320, child: _buildDesktopSummaryPanel()),
-                    ],
-                  )
-                : _buildFormScroll(isPro),
-          ),
-          floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 16, right: 16),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
                 Semantics(
                   label: 'Guardar CV',
                   button: true,
@@ -542,32 +612,90 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
                       : () {
                           _guardarCv();
                         },
-                  child: FloatingActionButton(
-                    heroTag: 'btnGuardar',
-                    onPressed: _uploadingPhoto ? null : _guardarCv,
+                  child: IconButton(
+                    icon: const Icon(Icons.save),
                     tooltip: 'Guardar CV',
-                    backgroundColor: AppTheme.secondaryGreen,
-                    child: _uploadingPhoto
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.save, color: Colors.white),
+                    onPressed: _uploadingPhoto ? null : _guardarCv,
                   ),
                 ),
-                const SizedBox(width: 12),
-                FloatingActionButton(
-                  heroTag: 'btnPreview',
-                  onPressed: _uploadingPhoto ? null : _generarPreview,
-                  tooltip: 'Ver PDF',
-                  backgroundColor: AppTheme.accentGreen,
-                  child: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                Semantics(
+                  label: 'Ver PDF',
+                  button: true,
+                  enabled: !_uploadingPhoto,
+                  onTap: _uploadingPhoto
+                      ? null
+                      : () {
+                          _generarPreview();
+                        },
+                  child: IconButton(
+                    icon: const Icon(Icons.picture_as_pdf),
+                    tooltip: 'Ver PDF',
+                    onPressed: _uploadingPhoto ? null : _generarPreview,
+                  ),
                 ),
               ],
+            ),
+            body: Form(
+              key: _formKey,
+              child: desktop
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(flex: 3, child: _buildFormScroll(isPro)),
+                        const VerticalDivider(width: 1),
+                        SizedBox(
+                          width: 320,
+                          child: _buildDesktopSummaryPanel(),
+                        ),
+                      ],
+                    )
+                  : _buildFormScroll(isPro),
+            ),
+            floatingActionButton: Padding(
+              padding: const EdgeInsets.only(bottom: 16, right: 16),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Semantics(
+                    label: 'Guardar CV',
+                    button: true,
+                    enabled: !_uploadingPhoto,
+                    onTap: _uploadingPhoto
+                        ? null
+                        : () {
+                            _guardarCv();
+                          },
+                    child: FloatingActionButton(
+                      heroTag: 'btnGuardar',
+                      onPressed: _uploadingPhoto ? null : _guardarCv,
+                      tooltip: 'Guardar CV',
+                      backgroundColor: AppTheme.secondaryGreen,
+                      child: _uploadingPhoto
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  FloatingActionButton(
+                    heroTag: 'btnPreview',
+                    onPressed: _uploadingPhoto ? null : _generarPreview,
+                    tooltip: 'Ver PDF',
+                    backgroundColor: AppTheme.accentGreen,
+                    child: const Icon(
+                      Icons.picture_as_pdf,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -704,45 +832,18 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
                   children: [
                     SizedBox(
                       width: 160,
-                      child: DropdownButtonFormField<String>(
+                      child: ContactIconDropdown(
                         key: ValueKey('contact-icon-$index-${data.icon}'),
-                        initialValue: data.icon,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Tipo',
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 12,
-                          ),
-                        ),
-                        items: _iconosDisponibles.entries
-                            .map(
-                              (e) => DropdownMenuItem(
-                                value: e.key,
-                                child: Text(
-                                  e.value,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                        icon: data.icon,
                         onChanged: (icon) {
-                          if (icon != null) {
-                            final label =
-                                _iconosDisponibles[icon]
-                                    ?.split(' ')
-                                    .skip(1)
-                                    .join(' ') ??
-                                data.label;
-                            setState(
-                              () => _datosPersonales[index] = PersonalData(
-                                label: label,
-                                value: data.value,
-                                icon: icon,
-                              ),
-                            );
-                          }
+                          final known = contactIconSelectionLabel(icon);
+                          setState(
+                            () => _datosPersonales[index] = PersonalData(
+                              label: known ?? data.label,
+                              value: data.value,
+                              icon: icon,
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -1157,6 +1258,12 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
           onChanged: (v) => setState(() => _squareCrop = v),
           dense: true,
         ),
+        if (_hasVisiblePhoto)
+          TextButton.icon(
+            onPressed: _uploadingPhoto ? null : _quitarFoto,
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Quitar foto'),
+          ),
         if (_fotoUrl != null)
           Text(
             'Foto sincronizada en la nube',
@@ -1824,20 +1931,8 @@ class _NuevoCvScreenState extends State<NuevoCvScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<int?>(
-                    key: ValueKey<int?>(level),
-                    initialValue: level,
-                    decoration: const InputDecoration(
-                      labelText: 'Nivel (opcional)',
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Sin nivel')),
-                      DropdownMenuItem(value: 1, child: Text('1')),
-                      DropdownMenuItem(value: 2, child: Text('2')),
-                      DropdownMenuItem(value: 3, child: Text('3')),
-                      DropdownMenuItem(value: 4, child: Text('4')),
-                      DropdownMenuItem(value: 5, child: Text('5')),
-                    ],
+                  AptitudeLevelDropdown(
+                    level: level,
                     onChanged: (v) => setLocal(() => level = v),
                   ),
                   TextField(

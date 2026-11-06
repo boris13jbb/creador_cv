@@ -49,6 +49,10 @@ class OnePageMetrics {
   static const minPhotoSize = 56.0;
   static const int maxLevel = 6;
 
+  /// Si ni el piso cabe en una hoja, la continuación usa este nivel.
+  /// Aplastar a 8 pt y aun así paginar se ve peor que dos páginas legibles.
+  static const int overflowLevel = 3;
+
   bool get meetsReadability =>
       bodySize >= minBodySize &&
       sectionSize >= minSectionSize &&
@@ -192,25 +196,26 @@ class OnePagePalette {
 
   static OnePagePalette fromColorHex(int colorHex) {
     final accent = PdfColor.fromInt(colorHex);
-    final dark = _isDark(colorHex);
+    // El color del usuario tiñe un tinta oscura: la barra deja de ser un
+    // bloque plano y el acento sigue identificando la plantilla.
+    final sidebar = _deepen(accent);
     return OnePagePalette(
-      sidebar: accent,
-      onSidebar: dark ? PdfColors.white : const PdfColor(0.1, 0.12, 0.16),
-      onSidebarMuted: dark
-          ? const PdfColor(1, 1, 1, 0.9)
-          : const PdfColor(0.16, 0.18, 0.22),
+      sidebar: sidebar,
+      onSidebar: PdfColors.white,
+      onSidebarMuted: const PdfColor(1, 1, 1, 0.78),
       accent: accent,
-      text: const PdfColor(0.12, 0.13, 0.16),
-      muted: const PdfColor(0.29, 0.32, 0.36),
-      rule: const PdfColor(0.75, 0.78, 0.82),
+      text: const PdfColor(0.11, 0.12, 0.15),
+      muted: const PdfColor(0.33, 0.36, 0.4),
+      rule: const PdfColor(0.82, 0.84, 0.86),
     );
   }
 
-  static bool _isDark(int argb) {
-    final r = ((argb >> 16) & 0xFF) / 255;
-    final g = ((argb >> 8) & 0xFF) / 255;
-    final b = (argb & 0xFF) / 255;
-    final luminance = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
-    return luminance < 0.62;
+  static PdfColor _deepen(PdfColor color) {
+    const ink = PdfColor(0.07, 0.09, 0.12);
+    return PdfColor(
+      color.red * 0.38 + ink.red * 0.62,
+      color.green * 0.38 + ink.green * 0.62,
+      color.blue * 0.38 + ink.blue * 0.62,
+    );
   }
 }

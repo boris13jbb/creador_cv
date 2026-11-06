@@ -259,7 +259,7 @@ Future<void> _write(
 }) async {
   final result = await buildProfessionalOnePage(resume);
   final via = await ResumePdfService.generateResumePdf(resume, isPro: true);
-  File('build/$name.pdf').writeAsBytesSync(result.bytes);
+  writeOnePageReviewPdf(name, result.bytes);
   // ignore: avoid_print
   print(
     '$name pages=${result.pageCount} '
@@ -272,9 +272,15 @@ Future<void> _write(
     'profession=${result.plan.profession ?? "-"} '
     'serviceBytes=${via.length} directBytes=${result.bytes.length}',
   );
-  expect(result.pageCount, 1);
-  expect(result.pageWidth, closeTo(PdfPageFormat.a4.width, 0.2));
-  expect(result.pageHeight, closeTo(PdfPageFormat.a4.height, 0.2));
+  expect(result.pageCount, 2);
+  expect(result.pageWidths, hasLength(2));
+  expect(result.pageHeights, hasLength(2));
+  for (final width in result.pageWidths) {
+    expect(width, closeTo(PdfPageFormat.a4.width, 0.2));
+  }
+  for (final height in result.pageHeights) {
+    expect(height, closeTo(PdfPageFormat.a4.height, 0.2));
+  }
   expect(result.metrics.meetsReadability, isTrue);
   expect(via.length, result.bytes.length);
   expect(result.plan.showPhoto, expectPhoto);
@@ -285,7 +291,54 @@ Future<void> _write(
   }
 }
 
+/// Guarda el PDF de revisión. Si el visor tiene el archivo abierto, usa otro nombre.
+void writeOnePageReviewPdf(String name, List<int> bytes) {
+  final primary = File('build/$name.pdf');
+  try {
+    primary.writeAsBytesSync(bytes);
+  } on FileSystemException {
+    File('build/${name}_review.pdf').writeAsBytesSync(bytes);
+  }
+}
+
 void main() {
+  test('cambiar plantilla de CV existente a One Page', () async {
+    final classic = referenceResume().copyWith(designIndex: 0);
+    expect(classic.designIndex, 0);
+
+    final edited = classic.copyWith(designIndex: 4);
+    final stored = Resume.fromMap(edited.toFirestoreMap(userId: 'owner'));
+
+    expect(stored.designIndex, 4);
+    expect(stored.nombre, classic.nombre);
+    expect(stored.perfil, classic.perfil);
+    expect(stored.datosPersonales.length, classic.datosPersonales.length);
+    expect(stored.experiencia.length, classic.experiencia.length);
+    expect(stored.formacion.length, classic.formacion.length);
+    expect(stored.projects.length, 8);
+    expect(stored.certifications.length, 8);
+    expect(stored.aptitudes.length, 4);
+    expect(stored.competencias.length, 4);
+    expect(stored.idiomas.length, 2);
+    expect(
+      stored.projects.map((project) => project.name),
+      classic.projects.map((project) => project.name),
+    );
+
+    final ready = stored.copyWith(fotoBytes: classic.fotoBytes);
+    expect(ready.fotoBytes, classic.fotoBytes);
+
+    final result = await buildProfessionalOnePage(ready);
+    final via = await ResumePdfService.generateResumePdf(ready, isPro: true);
+    expect(result.pageCount, 2);
+    expect(result.pageWidth, closeTo(PdfPageFormat.a4.width, 0.2));
+    expect(result.pageHeight, closeTo(PdfPageFormat.a4.height, 0.2));
+    expect(result.plan.showPhoto, isTrue);
+    expect(result.plan.sidebarTitles, isNotEmpty);
+    expect(result.plan.mainTitles, contains('Proyectos'));
+    expect(via.length, result.bytes.length);
+  });
+
   test('validación visual One Page con CV de referencia', () async {
     await _write('one_page_full', referenceResume());
     await _write(

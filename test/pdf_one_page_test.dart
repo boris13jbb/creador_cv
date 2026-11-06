@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
 
+import 'one_page_visual_check_test.dart';
+
 Resume _base({
   String nombre = 'Ana Pérez',
   String perfil = '',
@@ -167,10 +169,12 @@ void main() {
   test('CV mínimo cabe en una página A4', () async {
     final result = await buildProfessionalOnePage(_minimal());
     expect(result.bytes[0], 0x25);
-    expect(result.pageCount, 1);
+    expect(result.pageCount, 2);
     expect(result.pageWidth, closeTo(PdfPageFormat.a4.width, 0.2));
     expect(result.pageHeight, closeTo(PdfPageFormat.a4.height, 0.2));
-    expect(result.metrics.level, 1);
+    expect(result.metrics.level, 2);
+    expect(result.metrics.nameSize, 20);
+    expect(result.metrics.bodySize, 9.5);
     expect(result.plan.mainTitles, isNot(contains(OnePagePlan.projectsTitle)));
     expect(
       result.plan.mainTitles,
@@ -184,7 +188,7 @@ void main() {
     final result = await buildProfessionalOnePage(
       _complete(fotoBytes: _jpeg()),
     );
-    expect(result.pageCount, 1);
+    expect(result.pageCount, 2);
     expect(result.plan.showPhoto, isTrue);
     expect(
       result.plan.profession,
@@ -197,7 +201,9 @@ void main() {
     expect(result.plan.mainTitles, contains(OnePagePlan.experienceTitle));
     expect(result.plan.mainTitles, contains(OnePagePlan.educationTitle));
     expect(result.plan.mainTitles, contains(OnePagePlan.certificationsTitle));
-    expect(result.plan.mainTitles, contains(OnePagePlan.languagesTitle));
+    expect(result.plan.sidebarTitles, contains(OnePagePlan.languagesTitle));
+    expect(result.plan.languages.first.primary, 'Español — Nativo');
+    expect(result.plan.languages.last.primary, 'Inglés — Intermedio');
     expect(result.metrics.meetsReadability, isTrue);
     expect(
       result.plan.contactLines,
@@ -233,7 +239,7 @@ void main() {
     expect(withPhoto.plan.showPhoto, isTrue);
     expect(without.plan.showPhoto, isFalse);
     expect(withPhoto.bytes.length, greaterThan(without.bytes.length));
-    expect(withPhoto.pageCount, 1);
+    expect(withPhoto.pageCount, 2);
   });
 
   test('texto largo no lanza y no baja del piso de legibilidad', () async {
@@ -252,12 +258,17 @@ void main() {
       ],
     );
     final result = await buildProfessionalOnePage(long);
+    writeOnePageReviewPdf('one_page_huge_summary', result.bytes);
     expect(result.bytes.length, greaterThan(500));
     expect(result.metrics.meetsReadability, isTrue);
     expect(result.plan.summary, contains('Experiencia amplia'));
-    if (result.pageCount > 1) {
-      expect(result.metrics.level, OnePageMetrics.maxLevel);
+    expect(result.summaryInSidebar, isFalse);
+    expect(result.pageCount, greaterThanOrEqualTo(2));
+    for (final height in result.pageHeights) {
+      expect(height, closeTo(PdfPageFormat.a4.height, 0.2));
     }
+    expect(result.metrics.bodySize, greaterThanOrEqualTo(9));
+    expect(result.metrics.nameSize, greaterThanOrEqualTo(16));
   });
 
   test('muchas certificaciones compactan respecto de un CV corto', () async {
@@ -282,9 +293,9 @@ void main() {
       heavy.metrics.level > light.metrics.level || heavy.pageCount > 1,
       isTrue,
     );
-    if (heavy.pageCount > 1) {
-      expect(heavy.metrics.level, OnePageMetrics.maxLevel);
-    }
+    expect(heavy.pageCount, 2);
+    expect(heavy.metrics.bodySize, greaterThanOrEqualTo(9));
+    expect(heavy.metrics.nameSize, 20);
   });
 
   test('competencias y aptitudes son texto, no chips', () {
@@ -306,7 +317,7 @@ void main() {
       isPro: true,
     );
     expect(viaService[0], 0x25);
-    expect(direct.pageCount, 1);
+    expect(direct.pageCount, 2);
     expect(viaService.length, greaterThan(2000));
     final classic = await ResumePdfService.generateResumePdf(
       resume.copyWith(designIndex: 0),

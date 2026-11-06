@@ -1,5 +1,6 @@
 import '../../../../core/utils/url_validators.dart';
 import '../../../../models/resume.dart';
+import '../pdf_widgets.dart';
 
 /// Línea de texto. No es un chip, una tarjeta ni una insignia.
 class OnePageTextItem {
@@ -18,6 +19,7 @@ class OnePageEntry {
     this.paragraphs = const [],
     this.bullets = const [],
     this.dateAbove = false,
+    this.hours,
   });
 
   final String title;
@@ -25,6 +27,9 @@ class OnePageEntry {
   final String? subtitle;
   final List<String> paragraphs;
   final List<String> bullets;
+
+  /// Horas del curso, si el texto las trae. No es un campo aparte del modelo.
+  final String? hours;
 
   /// La fecha va encima del título, como en certificaciones compactas.
   final bool dateAbove;
@@ -79,15 +84,17 @@ class OnePagePlan {
   List<String> get sidebarTitles => [
     if (summary != null) summaryTitle,
     if (aptitudes.isNotEmpty) aptitudesTitle,
+    if (languages.isNotEmpty) languagesTitle,
     if (skills.isNotEmpty) skillsTitle,
   ];
 
+  /// La primera página lleva proyectos, experiencia y educación.
+  /// Las certificaciones van en la segunda.
   List<String> get mainTitles => [
     if (projects.isNotEmpty) projectsTitle,
     if (experience.isNotEmpty) experienceTitle,
     if (education.isNotEmpty) educationTitle,
     if (certifications.isNotEmpty) certificationsTitle,
-    if (languages.isNotEmpty) languagesTitle,
   ];
 
   /// Cada sección visible lleva contenido junto al título.
@@ -162,12 +169,13 @@ class OnePagePlan {
   }
 }
 
-const _levelLabels = <int, String>{
+/// En idiomas, el nivel máximo se lee como lengua propia, no como una habilidad.
+const _languageLabels = <int, String>{
   1: 'Principiante',
   2: 'Básico',
   3: 'Intermedio',
   4: 'Avanzado',
-  5: 'Experto',
+  5: 'Nativo',
 };
 
 const _professionLabels = {
@@ -260,11 +268,12 @@ OnePageTextItem _splitCategory(String raw) {
 }
 
 OnePageTextItem _language(Skill skill) {
-  final label = _levelLabels[skill.nivel.clamp(0, 5)];
-  return OnePageTextItem(
-    primary: skill.nombre.trim(),
-    secondary: (label == null || label.isEmpty) ? null : label,
-  );
+  final name = skill.nombre.trim();
+  final label = _languageLabels[skill.nivel.clamp(0, 5)];
+  if (label == null || label.isEmpty) {
+    return OnePageTextItem(primary: name);
+  }
+  return OnePageTextItem(primary: '$name — $label');
 }
 
 OnePageEntry _experience(Experience experience) {
@@ -315,13 +324,11 @@ OnePageEntry _project(Project project) {
 }
 
 OnePageEntry _certification(Certification certification) {
+  final parsed = _splitHours(certification.description);
   final paragraphs = <String>[
-    if ((certification.description ?? '').trim().isNotEmpty)
-      certification.description!.trim(),
+    if (parsed.rest.isNotEmpty) parsed.rest,
     if ((certification.expirationDate ?? '').trim().isNotEmpty)
       'Vence: ${certification.expirationDate!.trim()}',
-    if ((certification.credentialId ?? '').trim().isNotEmpty)
-      'Credencial: ${certification.credentialId!.trim()}',
     if ((certification.credentialUrl ?? '').trim().isNotEmpty)
       shortenUrlForDisplay(certification.credentialUrl!.trim()),
   ];
@@ -331,9 +338,19 @@ OnePageEntry _certification(Certification certification) {
     title: certification.name.trim(),
     trailing: date.isEmpty ? null : date,
     subtitle: institution.isEmpty ? null : institution,
+    hours: parsed.hours,
     paragraphs: paragraphs,
     dateAbove: date.isNotEmpty,
   );
+}
+
+/// Reutiliza [pdfDurationLabel]. Una frase con más texto se conserva entera.
+({String? hours, String rest}) _splitHours(String? description) {
+  final hours = pdfDurationLabel(description);
+  if (hours == null) {
+    return (hours: null, rest: (description ?? '').trim());
+  }
+  return (hours: hours, rest: '');
 }
 
 String _fold(String input) {

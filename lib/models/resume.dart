@@ -173,9 +173,9 @@ class Resume {
       'id': id,
       'nombre': nombre,
       if (fotoPath != null) 'fotoPath': fotoPath,
-      if (fotoUrl != null && fotoUrl!.isNotEmpty) 'fotoUrl': fotoUrl,
-      if (fotoStoragePath != null && fotoStoragePath!.isNotEmpty)
-        'fotoStoragePath': fotoStoragePath,
+      // Cadena vacía borra la referencia en un merge sin FieldValue.delete.
+      if (fotoUrl != null) 'fotoUrl': fotoUrl,
+      if (fotoStoragePath != null) 'fotoStoragePath': fotoStoragePath,
       'perfil': perfil,
       'datosPersonales': datosPersonales.map((d) => d.toMap()).toList(),
       'competencias': competencias.map((s) => s.toMap()).toList(),
