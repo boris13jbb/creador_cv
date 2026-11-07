@@ -323,12 +323,24 @@ OnePageEntry _project(Project project) {
   );
 }
 
+/// Línea de identificador, con el mismo rótulo que el resto de plantillas.
+///
+/// Un valor vacío o de solo espacios no genera rótulo. El texto interno se
+/// conserva; solo se descartan los espacios de los extremos.
+String? onePageCredentialLine(String? credentialId) {
+  final id = credentialId?.trim() ?? '';
+  if (id.isEmpty) return null;
+  return 'Credential ID: $id';
+}
+
 OnePageEntry _certification(Certification certification) {
   final parsed = _splitHours(certification.description);
+  final credential = onePageCredentialLine(certification.credentialId);
   final paragraphs = <String>[
     if (parsed.rest.isNotEmpty) parsed.rest,
     if ((certification.expirationDate ?? '').trim().isNotEmpty)
       'Vence: ${certification.expirationDate!.trim()}',
+    if (credential != null) credential,
     if ((certification.credentialUrl ?? '').trim().isNotEmpty)
       shortenUrlForDisplay(certification.credentialUrl!.trim()),
   ];
