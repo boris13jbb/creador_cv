@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../saas/config/saas_config.dart';
+import '../../saas/models/subscription_access.dart';
 import '../../saas/providers/auth_controller.dart';
 import '../routing/app_router.dart';
 import '../theme/app_tokens.dart';
@@ -137,8 +138,12 @@ class AppShell extends StatelessWidget {
             _DesktopSidebar(
               selectedIndex: index,
               onSelect: (i) => _go(context, i),
-              planLabel: auth.plan.label,
-              isPro: auth.isPro,
+              planLabel: auth.subscriptionAccess.isUnresolved
+                  ? (auth.subscriptionAccess == SubscriptionAccess.error
+                        ? 'sin verificar'
+                        : 'verificando')
+                  : auth.plan.label,
+              isPro: auth.subscriptionAccess == SubscriptionAccess.pro,
             ),
           const VerticalDivider(width: 1),
           Expanded(

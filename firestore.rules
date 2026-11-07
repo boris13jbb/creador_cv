@@ -103,28 +103,69 @@ service cloud.firestore {
         && (!('fotoStoragePath' in request.resource.data) || isOptionalString(request.resource.data.fotoStoragePath, 500));
     }
 
-    // Pro activo/trialing según entitlements (escrito por Stripe/Admin).
-    function isProUser(userId) {
-      return exists(/databases/$(database)/documents/entitlements/$(userId))
-        && get(/databases/$(database)/documents/entitlements/$(userId)).data.plan == 'pro'
-        && get(/databases/$(database)/documents/entitlements/$(userId)).data.subscriptionStatus
-            in ['active', 'trialing'];
+    // Entitlement del usuario (solo Admin SDK escribe grants).
+    function entitlementOf(userId) {
+      return get(/databases/$(database)/documents/entitlements/$(userId)).data;
     }
 
-    // Contador materializado por Functions (`syncResumeUsage` / triggers).
-    // Free con usage: resumeCount < 3. Sin usage (Functions aún no sync):
-    // se permite create (límites cliente); tras sync el tope queda en reglas.
-    function freeUnderResumeLimit(userId) {
-      let usagePath = /databases/$(database)/documents/usage/$(userId);
-      return !exists(usagePath)
+    // Cortesía temporal: exige Timestamps (grant*Ts) escritos por backend.
+    // Semántica: grantStartsAtTs <= request.time < grantExpiresAtTs
+    // ISO-only sin *Ts: fail-closed (no Pro ilimitado vía Rules).
+    // Legado admin_grant sin fechas ni modality=temporary: vigente hasta revoke.
+    function adminGrantAllowsPro(data) {
+      return data.source == 'admin_grant'
+        && data.plan == 'pro'
+        && data.subscriptionStatus == 'active'
+        && adminGrantWindowOk(data);
+    }
+
+    function adminGrantHasTemporalSignal(data) {
+      return (data.keys().hasAny(['grantModality'])
+          && data.grantModality == 'temporary')
+        || (data.keys().hasAny(['grantStartsAtTs'])
+          && data.grantStartsAtTs != null)
+        || (data.keys().hasAny(['grantExpiresAtTs'])
+          && data.grantExpiresAtTs != null)
+        || (data.keys().hasAny(['grantStartsAt'])
+          && data.grantStartsAt != null)
+        || (data.keys().hasAny(['grantExpiresAt'])
+          && data.grantExpiresAt != null);
+    }
+
+    function adminGrantWindowOk(data) {
+      return !adminGrantHasTemporalSignal(data)
         || (
-          get(usagePath).data.resumeCount is int
-          && get(usagePath).data.resumeCount < 3
+          data.keys().hasAny(['grantExpiresAtTs'])
+          && data.grantExpiresAtTs is timestamp
+          && request.time < data.grantExpiresAtTs
+          && (
+            !(data.keys().hasAny(['grantStartsAtTs'])
+              && data.grantStartsAtTs != null)
+            || (
+              data.grantStartsAtTs is timestamp
+              && request.time >= data.grantStartsAtTs
+            )
+          )
         );
     }
 
+    // Pro: Stripe/legacy por plan+status; admin_grant por ventana temporal.
+    function isProUser(userId) {
+      return exists(/databases/$(database)/documents/entitlements/$(userId))
+        && entitlementOf(userId).plan == 'pro'
+        && entitlementOf(userId).subscriptionStatus in ['active', 'trialing']
+        && (
+          !(entitlementOf(userId).keys().hasAny(['source'])
+            && entitlementOf(userId).source == 'admin_grant')
+          || adminGrantAllowsPro(entitlementOf(userId))
+        );
+    }
+
+    // Create directo desde cliente: solo Pro confirmado.
+    // Free DEBE usar Cloud Function `createResume` (transacción atómica).
+    // Admin SDK omite Rules; el límite Free se aplica en la Function.
     function canCreateResumeDoc(userId) {
-      return isProUser(userId) || freeUnderResumeLimit(userId);
+      return isProUser(userId);
     }
 
     match /users/{userId} {
@@ -149,6 +190,11 @@ service cloud.firestore {
     match /usage/{userId} {
       allow read: if isOwner(userId);
       allow write: if false;
+    }
+
+    // Idempotencia de createResume — solo Admin SDK.
+    match /resumeCreateIdempotency/{docId} {
+      allow read, write: if false;
     }
 
     match /entitlements/{userId} {

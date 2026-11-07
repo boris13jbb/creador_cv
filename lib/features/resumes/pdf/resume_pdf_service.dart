@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import '../../../features/templates/cv_templates.dart';
 import '../../../models/resume.dart';
+import '../../../saas/models/subscription_access.dart';
 import 'classic_pdf_generator.dart';
 import 'creative_pdf_generator.dart';
 import 'executive_pdf_generator.dart';
@@ -11,16 +12,25 @@ import 'professional_one_page_pdf_generator.dart';
 class ResumePdfService {
   /// Genera el PDF del CV.
   ///
-  /// Si [isPro] es false y el diseño requiere Pro, se usa la plantilla Free
-  /// de respaldo (Clásico) sin mutar el modelo persistido.
+  /// Si [access] es [SubscriptionAccess.free] y el diseño requiere Pro, se usa
+  /// Clásico sin mutar el modelo persistido. Si el plan está pendiente, no
+  /// genera ni sustituye una plantilla Pro.
+  ///
+  /// [isPro] se conserva para llamadas que ya confirmaron el plan.
   static Future<Uint8List> generateResumePdf(
     Resume resume, {
     bool isPro = false,
+    SubscriptionAccess? access,
   }) async {
-    final design = CvTemplates.resolveDesignIndex(
+    final decision = CvTemplates.decideRender(
       resume.designIndex,
-      isPro: isPro,
+      access:
+          access ?? (isPro ? SubscriptionAccess.pro : SubscriptionAccess.free),
     );
+    if (decision.holdForPlan) {
+      throw const PlanVerificationPending();
+    }
+    final design = decision.renderIndex!;
     final effective = design == resume.designIndex
         ? resume
         : resume.copyWith(designIndex: design);
@@ -40,4 +50,12 @@ class ResumePdfService {
         return generateClassicPdf(effective);
     }
   }
+}
+
+/// El plan aún no está verificado. No se genera Clásico ni una plantilla Pro.
+class PlanVerificationPending implements Exception {
+  const PlanVerificationPending();
+
+  @override
+  String toString() => 'El plan todavía no está verificado.';
 }

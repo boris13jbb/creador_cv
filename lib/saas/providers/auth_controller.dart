@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../config/saas_config.dart';
 import '../config/saas_platform.dart';
 import '../models/saas_user_profile.dart';
+import '../models/subscription_access.dart';
 import '../models/user_entitlement.dart';
 import '../services/auth_service.dart';
 import '../services/entitlement_service.dart';
@@ -37,6 +38,7 @@ class AuthController extends ChangeNotifier {
   String? _error;
   bool _emailVerified = false;
   bool _offlineFallback = false;
+  bool _planUnconfirmed = false;
 
   User? get user => _user;
   AuthSession? get restSession =>
@@ -49,7 +51,17 @@ class AuthController extends ChangeNotifier {
           true);
   bool get loading => _loading;
   String? get error => _error;
-  bool get isPro => _entitlement?.isPro ?? false;
+  bool get isPro =>
+      subscriptionAccess == SubscriptionAccess.pro &&
+      (_entitlement?.isPro ?? false);
+
+  /// Pro confirmado, Free confirmado o plan todavía no verificado.
+  SubscriptionAccess get subscriptionAccess => resolveSubscriptionAccess(
+    authenticated: isAuthenticated,
+    loading: _loading,
+    planUnconfirmed: _planUnconfirmed,
+    entitlement: _entitlement,
+  );
 
   /// Pro otorgado por superadmin (sin Stripe).
   bool get isAdminGrant => _entitlement?.isAdminGrant ?? false;
@@ -85,9 +97,14 @@ class AuthController extends ChangeNotifier {
   }
 
   /// Reintenta cargar perfil/entitlements tras un fallo de red.
+  ///
+  /// Limpia el error visible y vuelve a resolver el plan. Si ya había un
+  /// entitlement confirmado en memoria, no se degrada a Free durante el reintento.
   Future<void> retrySessionLoad() async {
     _error = null;
     _offlineFallback = false;
+    // Conserva _entitlement previo; solo limpia la marca de fallo si había plan.
+    if (_entitlement != null) _planUnconfirmed = false;
     await _onAuthChanged(_user ?? AuthService.instance.currentUser);
   }
 
@@ -103,6 +120,7 @@ class AuthController extends ChangeNotifier {
     if (user == null && _restSession == null) {
       _profile = null;
       _entitlement = null;
+      _planUnconfirmed = false;
       _emailVerified = false;
       _loading = false;
       notifyListeners();
@@ -127,6 +145,7 @@ class AuthController extends ChangeNotifier {
         _restSession = null;
         _profile = null;
         _entitlement = null;
+        _planUnconfirmed = false;
       }
     } finally {
       _loading = false;
@@ -140,9 +159,11 @@ class AuthController extends ChangeNotifier {
       _profile = await UserProfileService.instance
           .ensureProfile(user)
           .timeout(_cloudTimeout);
-      _entitlement = await EntitlementService.instance
-          .ensureEntitlement(uid: user.uid, profile: _profile)
-          .timeout(_cloudTimeout);
+      _acceptEntitlement(
+        await EntitlementService.instance
+            .ensureEntitlement(uid: user.uid, profile: _profile)
+            .timeout(_cloudTimeout),
+      );
       _profileSub = UserProfileService.instance.watchProfile(user.uid).listen((
         p,
       ) {
@@ -154,6 +175,8 @@ class AuthController extends ChangeNotifier {
           .listen((e) {
             if (e != null) {
               _entitlement = e;
+              _planUnconfirmed = false;
+              _offlineFallback = false;
               notifyListeners();
             }
           }, onError: (_) {});
@@ -176,7 +199,22 @@ class AuthController extends ChangeNotifier {
           TimeoutException('No se pudo resolver firestore.googleapis.com'),
     );
     _profile ??= _profileFromAuthUser(user);
-    _entitlement ??= UserEntitlement.freeBootstrap(user.uid);
+    if (_entitlement == null) _planUnconfirmed = true;
+  }
+
+  /// Acepta un entitlement leído. Un resultado no confirmado no pisa uno real
+  /// ni se trata como Free.
+  void _acceptEntitlement(EntitlementLoad load) {
+    if (!load.confirmed) {
+      if (_entitlement == null) _planUnconfirmed = true;
+      _offlineFallback = true;
+      _error ??= _friendlyNetworkMessage(
+        TimeoutException('No se pudo verificar el plan'),
+      );
+      return;
+    }
+    _entitlement = load.entitlement;
+    _planUnconfirmed = false;
   }
 
   SaasUserProfile _profileFromAuthUser(User user) {
@@ -254,9 +292,11 @@ class AuthController extends ChangeNotifier {
       _profile = await FirestoreRestClient.instance
           .ensureUserProfile(session: session, displayName: displayName)
           .timeout(_cloudTimeout);
-      _entitlement = await EntitlementService.instance
-          .ensureEntitlementRest(session: session, profile: _profile)
-          .timeout(_cloudTimeout);
+      _acceptEntitlement(
+        await EntitlementService.instance
+            .ensureEntitlementRest(session: session, profile: _profile)
+            .timeout(_cloudTimeout),
+      );
     } on TimeoutException {
       _offlineFallback = true;
       _error = _friendlyNetworkMessage(
@@ -270,7 +310,7 @@ class AuthController extends ChangeNotifier {
         createdAt: now,
         updatedAt: now,
       );
-      _entitlement ??= UserEntitlement.freeBootstrap(session.uid);
+      if (_entitlement == null) _planUnconfirmed = true;
     }
   }
 
@@ -321,6 +361,7 @@ class AuthController extends ChangeNotifier {
     _restSession = null;
     _profile = null;
     _entitlement = null;
+    _planUnconfirmed = false;
     _user = null;
     _emailVerified = false;
     notifyListeners();
@@ -407,28 +448,36 @@ class AuthController extends ChangeNotifier {
         );
         if (remote != null) {
           _entitlement = remote;
+          _planUnconfirmed = false;
           notifyListeners();
           return;
         }
-        _entitlement = await EntitlementService.instance.ensureEntitlementRest(
-          session: session,
-          profile: _profile,
+        _acceptEntitlement(
+          await EntitlementService.instance.ensureEntitlementRest(
+            session: session,
+            profile: _profile,
+          ),
         );
       } else {
         final remote = await EntitlementService.instance.getEntitlement(id);
         if (remote != null) {
           _entitlement = remote;
+          _planUnconfirmed = false;
           notifyListeners();
           return;
         }
-        _entitlement = await EntitlementService.instance.ensureEntitlement(
-          uid: id,
-          profile: _profile,
+        _acceptEntitlement(
+          await EntitlementService.instance.ensureEntitlement(
+            uid: id,
+            profile: _profile,
+          ),
         );
       }
       notifyListeners();
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
+      // No degradar Pro/Free ya confirmado: solo marca error si nunca hubo plan.
+      if (_entitlement == null) _planUnconfirmed = true;
       notifyListeners();
     }
   }
@@ -460,6 +509,7 @@ class AuthController extends ChangeNotifier {
       _restSession = null;
       _profile = null;
       _entitlement = null;
+      _planUnconfirmed = false;
       _user = null;
       _emailVerified = false;
       _loading = false;

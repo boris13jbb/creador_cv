@@ -6,6 +6,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../features/templates/cv_template_thumbnail.dart';
 import '../../features/templates/cv_templates.dart';
+import '../../saas/models/subscription_access.dart';
 import '../../saas/providers/auth_controller.dart';
 
 /// Galería de plantillas con miniaturas, bloqueo Free/Pro y deep-link al editor.
@@ -14,7 +15,7 @@ class TemplatesGalleryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPro = context.watch<AuthController>().isPro;
+    final access = context.watch<AuthController>().subscriptionAccess;
     final theme = Theme.of(context);
     final layout = AppLayout.of(context);
     final crossAxisCount = layout == AppLayoutType.mobile
@@ -33,8 +34,12 @@ class TemplatesGalleryScreen extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              isPro
+              access == SubscriptionAccess.pro
                   ? 'Tu plan Pro incluye las 5 plantillas profesionales.'
+                  : access.isUnresolved
+                  ? (access == SubscriptionAccess.error
+                        ? 'No se pudo verificar tu plan. Reintenta; las plantillas Pro se habilitan al confirmarlo.'
+                        : 'Estamos verificando tu plan. Las plantillas Pro se habilitan al confirmarlo.')
                   : 'Free: Clásico y Moderno. Ejecutiva, Creativa y One Page requieren Pro.',
               style: theme.textTheme.bodyMedium,
             ),
@@ -51,7 +56,9 @@ class TemplatesGalleryScreen extends StatelessWidget {
                 itemCount: CvTemplates.all.length,
                 itemBuilder: (context, i) {
                   final t = CvTemplates.all[i];
-                  final locked = t.requiresPro && !isPro;
+                  final locked =
+                      t.requiresPro && access == SubscriptionAccess.free;
+                  final waiting = t.requiresPro && access.isUnresolved;
                   return Semantics(
                     button: true,
                     label: '${t.name}${locked ? ', requiere Pro' : ''}',
@@ -62,6 +69,16 @@ class TemplatesGalleryScreen extends StatelessWidget {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(AppRadii.lg),
                         onTap: () {
+                          if (waiting) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Estamos verificando tu plan. Inténtalo cuando termine la comprobación.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
                           if (locked) {
                             context.push(AppRoutes.pricing);
                             return;

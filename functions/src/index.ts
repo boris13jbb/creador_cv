@@ -11,7 +11,9 @@ setGlobalOptions({region: FUNCTIONS_REGION});
  * docs/STRIPE_BILLING.md tras crear STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET.
  */
 export {syncResumeUsage} from "./syncResumeUsage";
+export {createResume} from "./createResume";
 export {onResumeUsageChanged} from "./resumeUsageTriggers";
+export {createResumeAtomic, CreateResumeError} from "./createResumeCore";
 
 export {
   mapSubscriptionToEntitlement,

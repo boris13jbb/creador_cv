@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import {FUNCTIONS_REGION} from "./runtime";
 import {requireUidFromRequest, jsonError, isUnauthenticatedError} from "./auth";
 import {canCreateResume, isProEntitlement} from "./planLimits";
+import {expireGrantIfNeeded} from "./adminGrants";
 import {refreshResumeUsage} from "./usageStore";
 
 /**
@@ -13,6 +14,13 @@ import {refreshResumeUsage} from "./usageStore";
  *
  * Recuenta CVs y materializa `usage/{uid}` para que las reglas Firestore
  * puedan aplicar el límite Free en el servidor.
+ *
+ * Nota FASE 1.2: la creación Free ya no usa setDoc + Rules; usa `createResume`
+ * (transacción). Esta función sigue materializando usage para admin/UI y
+ * reconciliación; el tope Free se aplica en la TX de createResume.
+ *
+ * La autorización Pro de cortesía usa la ventana temporal; expireGrantIfNeeded
+ * solo materializa plan=free tras el vencimiento (no es la única barrera).
  */
 export const syncResumeUsage = onRequest(
   {
@@ -36,11 +44,13 @@ export const syncResumeUsage = onRequest(
 
     try {
       const {uid} = await requireUidFromRequest(req);
+      await expireGrantIfNeeded(uid);
       const usage = await refreshResumeUsage(uid);
       const entSnap = await admin.firestore().doc(`entitlements/${uid}`).get();
-      const isPro = isProEntitlement(
-        entSnap.exists ? (entSnap.data() as {plan?: string; subscriptionStatus?: string}) : null,
-      );
+      const entData = entSnap.exists
+        ? (entSnap.data() as Record<string, unknown>)
+        : null;
+      const isPro = isProEntitlement(entData);
       const canCreate = canCreateResume({
         currentCount: usage.resumeCount,
         isPro,

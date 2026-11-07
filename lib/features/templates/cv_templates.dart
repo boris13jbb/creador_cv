@@ -1,3 +1,5 @@
+import '../../saas/models/subscription_access.dart';
+
 /// Metadatos y acceso a plantillas PDF (Free vs Pro).
 class CvTemplateInfo {
   final int designIndex;
@@ -72,9 +74,47 @@ abstract final class CvTemplates {
   }
 
   /// Si el diseño es Pro y el usuario no lo es, cae al fallback Free.
+  ///
+  /// Solo para un plan ya confirmado. Si el plan está pendiente, usa
+  /// [decideRender] para no sustituir el índice guardado.
   static int resolveDesignIndex(int requested, {required bool isPro}) {
     if (canUseDesign(requested, isPro: isPro)) return requested;
     return freeFallbackIndex;
+  }
+
+  /// Qué índice dibujar sin mutar el CV guardado.
+  ///
+  /// Con el plan pendiente, una plantilla Pro no se convierte en Clásico ni
+  /// se genera: [TemplateRenderDecision.holdForPlan] queda en true.
+  static TemplateRenderDecision decideRender(
+    int savedIndex, {
+    required SubscriptionAccess access,
+  }) {
+    switch (access) {
+      case SubscriptionAccess.pro:
+        return TemplateRenderDecision(
+          savedIndex: savedIndex,
+          renderIndex: savedIndex,
+        );
+      case SubscriptionAccess.free:
+        return TemplateRenderDecision(
+          savedIndex: savedIndex,
+          renderIndex: resolveDesignIndex(savedIndex, isPro: false),
+        );
+      case SubscriptionAccess.pending:
+      case SubscriptionAccess.error:
+        // No Free ni Pro: plantillas Pro en espera; Free siguen disponibles.
+        if (requiresPro(savedIndex)) {
+          return TemplateRenderDecision(
+            savedIndex: savedIndex,
+            renderIndex: null,
+          );
+        }
+        return TemplateRenderDecision(
+          savedIndex: savedIndex,
+          renderIndex: savedIndex,
+        );
+    }
   }
 
   static List<CvTemplateInfo> freeOnly() =>
@@ -82,4 +122,19 @@ abstract final class CvTemplates {
 
   static List<CvTemplateInfo> proOnly() =>
       all.where((t) => t.requiresPro).toList(growable: false);
+}
+
+/// Decisión de dibujo. [renderIndex] null significa esperar, no cambiar de plantilla.
+class TemplateRenderDecision {
+  const TemplateRenderDecision({
+    required this.savedIndex,
+    required this.renderIndex,
+  });
+
+  final int savedIndex;
+  final int? renderIndex;
+
+  bool get holdForPlan => renderIndex == null;
+
+  bool get keptSavedDesign => renderIndex == savedIndex;
 }

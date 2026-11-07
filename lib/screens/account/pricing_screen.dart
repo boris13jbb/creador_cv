@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../saas/config/saas_config.dart';
+import '../../saas/models/subscription_access.dart';
 import '../../saas/providers/auth_controller.dart';
 import '../../saas/services/billing_service.dart';
 
@@ -97,7 +98,9 @@ class _PricingScreenState extends State<PricingScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
-    final isPro = auth.isPro;
+    final access = auth.subscriptionAccess;
+    final isPro = access == SubscriptionAccess.pro;
+    final pending = access.isUnresolved;
     final theme = Theme.of(context);
     final desktop = AppLayout.of(context) == AppLayoutType.desktop;
 
@@ -118,9 +121,13 @@ class _PricingScreenState extends State<PricingScreen> {
             Text('Elige tu plan', style: theme.textTheme.headlineMedium),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Plan actual: ${auth.plan.label}'
-              '${auth.entitlement?.subscriptionStatus != null ? ' (${auth.entitlement!.subscriptionStatus})' : ''}'
-              '${auth.isAdminGrant ? ' · cortesía admin' : ''}',
+              auth.subscriptionAccess == SubscriptionAccess.error
+                  ? 'Plan: no se pudo verificar. Reintenta; no se asume Free ni Pro.'
+                  : auth.subscriptionAccess == SubscriptionAccess.pending
+                  ? 'Plan: verificando suscripción. Todavía no está confirmado.'
+                  : 'Plan actual: ${auth.plan.label}'
+                        '${auth.entitlement?.subscriptionStatus != null ? ' (${auth.entitlement!.subscriptionStatus})' : ''}'
+                        '${auth.isAdminGrant ? ' · cortesía admin' : ''}',
               style: theme.textTheme.bodyLarge,
             ),
             if (auth.isAdminGrant) ...[
@@ -163,8 +170,10 @@ class _PricingScreenState extends State<PricingScreen> {
                         'Exportación PDF',
                         'Nube sincronizada',
                       ],
-                      highlighted: !isPro,
-                      actionLabel: isPro ? 'Plan inferior' : 'Plan actual',
+                      highlighted: !isPro && !pending,
+                      actionLabel: pending
+                          ? 'Sin confirmar'
+                          : (isPro ? 'Plan inferior' : 'Plan actual'),
                       onPressed: null,
                     ),
                   ),
@@ -180,8 +189,10 @@ class _PricingScreenState extends State<PricingScreen> {
                         'Soporte prioritario',
                       ],
                       highlighted: isPro,
-                      actionLabel: isPro ? 'Plan actual' : 'Mejorar a Pro',
-                      onPressed: isPro || _busy ? null : _upgrade,
+                      actionLabel: pending
+                          ? 'Sin confirmar'
+                          : (isPro ? 'Plan actual' : 'Mejorar a Pro'),
+                      onPressed: isPro || pending || _busy ? null : _upgrade,
                       isProCard: true,
                     ),
                   ),
@@ -197,8 +208,10 @@ class _PricingScreenState extends State<PricingScreen> {
                   'Exportación PDF',
                   'Nube sincronizada',
                 ],
-                highlighted: !isPro,
-                actionLabel: isPro ? 'Plan inferior' : 'Plan actual',
+                highlighted: !isPro && !pending,
+                actionLabel: pending
+                    ? 'Sin confirmar'
+                    : (isPro ? 'Plan inferior' : 'Plan actual'),
                 onPressed: null,
               ),
               const SizedBox(height: AppSpacing.md),
@@ -212,8 +225,10 @@ class _PricingScreenState extends State<PricingScreen> {
                   'Soporte prioritario',
                 ],
                 highlighted: isPro,
-                actionLabel: isPro ? 'Plan actual' : 'Mejorar a Pro',
-                onPressed: isPro || _busy ? null : _upgrade,
+                actionLabel: pending
+                    ? 'Sin confirmar'
+                    : (isPro ? 'Plan actual' : 'Mejorar a Pro'),
+                onPressed: isPro || pending || _busy ? null : _upgrade,
                 isProCard: true,
               ),
             ],

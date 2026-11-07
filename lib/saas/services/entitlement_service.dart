@@ -4,6 +4,14 @@ import '../models/user_entitlement.dart';
 import 'firestore_rest_client.dart';
 import 'identity_toolkit_client.dart';
 
+/// Resultado de lectura. [confirmed] es false si no hubo respuesta del servidor.
+class EntitlementLoad {
+  const EntitlementLoad({required this.entitlement, required this.confirmed});
+
+  final UserEntitlement entitlement;
+  final bool confirmed;
+}
+
 /// Lectura y bootstrap seguro de entitlements (sin elevar privilegios).
 class EntitlementService {
   EntitlementService._();
@@ -34,36 +42,46 @@ class EntitlementService {
 
   /// Crea entitlement Free o migra desde campos legacy del perfil de usuario.
   /// Nunca inventa Pro: solo copia plan legacy existente o bootstrap Free.
-  /// Si las reglas aún no están desplegadas, usa fallback local.
-  Future<UserEntitlement> ensureEntitlement({
+  /// Un fallo de lectura no se presenta como Free confirmado.
+  Future<EntitlementLoad> ensureEntitlement({
     required String uid,
     SaasUserProfile? profile,
   }) async {
     try {
       final existing = await getEntitlement(uid);
-      if (existing != null) return existing;
+      if (existing != null) {
+        return EntitlementLoad(entitlement: existing, confirmed: true);
+      }
     } catch (_) {
-      return _localFallback(uid, profile);
+      return EntitlementLoad(
+        entitlement: _localFallback(uid, profile),
+        confirmed: false,
+      );
     }
 
     final toCreate = _buildCreatePayload(uid, profile);
 
     try {
       await _ref(uid).set(toCreate.toMap());
-      return toCreate;
+      return EntitlementLoad(entitlement: toCreate, confirmed: true);
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied' || e.code == 'already-exists') {
         try {
           final again = await getEntitlement(uid);
-          if (again != null) return again;
+          if (again != null) {
+            return EntitlementLoad(entitlement: again, confirmed: true);
+          }
         } catch (_) {}
-        return _localFallback(uid, profile);
+        return EntitlementLoad(
+          entitlement: _localFallback(uid, profile),
+          confirmed: false,
+        );
       }
       rethrow;
     }
   }
 
-  Future<UserEntitlement> ensureEntitlementRest({
+  Future<EntitlementLoad> ensureEntitlementRest({
     required AuthSession session,
     SaasUserProfile? profile,
   }) async {
@@ -71,9 +89,14 @@ class EntitlementService {
       final existing = await FirestoreRestClient.instance.getEntitlement(
         session,
       );
-      if (existing != null) return existing;
+      if (existing != null) {
+        return EntitlementLoad(entitlement: existing, confirmed: true);
+      }
     } catch (_) {
-      return _localFallback(session.uid, profile);
+      return EntitlementLoad(
+        entitlement: _localFallback(session.uid, profile),
+        confirmed: false,
+      );
     }
 
     final toCreate = _buildCreatePayload(session.uid, profile);
@@ -83,10 +106,13 @@ class EntitlementService {
         session: session,
         entitlement: toCreate.toMap(),
       );
-      return (await FirestoreRestClient.instance.getEntitlement(session)) ??
-          toCreate;
+      final stored = await FirestoreRestClient.instance.getEntitlement(session);
+      return EntitlementLoad(entitlement: stored ?? toCreate, confirmed: true);
     } catch (_) {
-      return _localFallback(session.uid, profile);
+      return EntitlementLoad(
+        entitlement: _localFallback(session.uid, profile),
+        confirmed: false,
+      );
     }
   }
 

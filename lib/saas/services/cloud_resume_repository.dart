@@ -11,10 +11,11 @@ import '../../features/resumes/data/resume_repository.dart';
 import '../../models/resume.dart';
 import '../config/plan_limits.dart';
 import '../config/saas_platform.dart';
+import '../models/subscription_access.dart';
 import '../providers/auth_controller.dart';
 import 'auth_service.dart';
+import 'create_resume_service.dart';
 import 'firestore_rest_client.dart';
-import 'usage_service.dart';
 
 /// Resultado de guardar un CV con foto opcional.
 class ResumeSaveOutcome {
@@ -65,21 +66,21 @@ class CloudResumeRepository implements ResumeRepository {
 
   bool get _isPro => _auth?.isPro ?? false;
 
-  /// Sincroniza `usage/{uid}` en servidor antes de un create Free.
-  /// Evita permission-denied de reglas y aplica el tope real.
-  Future<void> _assertServerAllowsNewResume() async {
-    if (_isPro) return;
-    try {
-      final snap = await UsageService.instance.syncResumeUsage();
-      if (!snap.canCreate) {
-        throw AppException(PlanLimits.limitReachedMessage(isPro: false));
-      }
-      return;
-    } on AppException {
-      rethrow;
-    } catch (_) {
-      // Functions aún no desplegadas o red: fallback al conteo cliente.
+  /// Create Free: Cloud Function atómica. Create Pro: Firestore directo.
+  Future<void> _createViaFunction(Resume resume, String uid) async {
+    final access = _auth?.subscriptionAccess;
+    if (access != null && access.isUnresolved) {
+      throw AppException(PlanLimits.planUnresolvedCreateMessage());
     }
+    final data = stripNullsForFirestore(resume.toFirestoreMap(userId: uid));
+    data['id'] = resume.id.trim();
+    data['userId'] = uid;
+    await CreateResumeService.instance.create(
+      resumeId: resume.id.trim(),
+      resume: data,
+      // Misma clave en reintentos de red ⇒ no duplica el documento.
+      idempotencyKey: 'resume:${resume.id.trim()}',
+    );
   }
 
   @override
@@ -131,16 +132,28 @@ class CloudResumeRepository implements ResumeRepository {
   }
 
   Future<void> insertarResume(Resume resume) async {
+    final docId = resume.id.trim();
+    if (docId.isEmpty || docId.contains('/')) {
+      throw const ValidationAppException(
+        'Identificador de CV inválido. Cierra y vuelve a abrir el CV.',
+      );
+    }
+
     if (_useRest) {
       final session = await AuthService.instance.ensureValidRestToken();
+      final uid = session.uid;
       final actuales = await listAll();
-      final exists = actuales.any((r) => r.id == resume.id);
-      final max = _maxCvs;
-      if (!exists && actuales.length >= max) {
-        throw AppException(PlanLimits.limitReachedMessage(isPro: _isPro));
-      }
+      final exists = actuales.any((r) => r.id == docId);
       if (!exists) {
-        await _assertServerAllowsNewResume();
+        final access = _auth?.subscriptionAccess;
+        if (access != null && access.isUnresolved) {
+          throw AppException(PlanLimits.planUnresolvedCreateMessage());
+        }
+        // Free (y cualquier create no-Pro): Function atómica.
+        if (!_isPro) {
+          await _createViaFunction(resume, uid);
+          return;
+        }
       }
       await FirestoreRestClient.instance.upsertResume(
         session: session,
@@ -154,30 +167,17 @@ class CloudResumeRepository implements ResumeRepository {
       throw const AuthAppException('Debes iniciar sesión para continuar.');
     }
 
-    final docId = resume.id.trim();
-    if (docId.isEmpty || docId.contains('/')) {
-      throw const ValidationAppException(
-        'Identificador de CV inválido. Cierra y vuelve a abrir el CV.',
-      );
-    }
-
-    // Existencia real del documento (no un limit arbitrario).
     final existingSnap = await _col.doc(docId).get();
     final exists = existingSnap.exists;
+    final uid = user.uid;
 
-    // Free: comprobar cupo con limit acotado. Pro no usa query limit(999999+)
-    // porque Firestore rechaza limits > 10000 (invalid-argument).
+    // Create Free: solo Cloud Function (Rules deniegan create directo).
     if (!exists && !_isPro) {
-      final countSnap = await _col.limit(_maxCvs + 1).get();
-      if (countSnap.size >= _maxCvs) {
-        throw AppException(PlanLimits.limitReachedMessage(isPro: false));
-      }
-      await _assertServerAllowsNewResume();
+      await _createViaFunction(resume, uid);
+      return;
     }
 
-    final uid = user.uid;
-    // Payload solo con tipos JSON-safe. Sin FieldValue.delete/serverTimestamp:
-    // en Android provocaban cloud_firestore/invalid-argument al crear/editar.
+    // Update (Free/Pro) o create Pro: escritura directa.
     final data = stripNullsForFirestore(resume.toFirestoreMap(userId: uid));
     data['id'] = docId;
     data['userId'] = uid;

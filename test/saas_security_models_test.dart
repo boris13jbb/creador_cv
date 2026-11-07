@@ -27,6 +27,18 @@ void main() {
       expect(e.maxCvs > SaasConfig.freeMaxCvs, isTrue);
     });
 
+    test('Pro en prueba es Pro', () {
+      final now = DateTime.now();
+      final e = UserEntitlement(
+        uid: 'u1',
+        plan: SubscriptionPlan.pro,
+        subscriptionStatus: 'trialing',
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(e.isPro, isTrue);
+    });
+
     test('Pro canceled no es Pro', () {
       final now = DateTime.now();
       final e = UserEntitlement(
@@ -60,7 +72,7 @@ void main() {
     });
 
     test('admin_grant vigente es Pro de cortesía', () {
-      final now = DateTime.now();
+      final now = DateTime.utc(2026, 10, 27, 15);
       final e = UserEntitlement(
         uid: 'u1',
         plan: SubscriptionPlan.pro,
@@ -68,16 +80,18 @@ void main() {
         source: 'admin_grant',
         grantedBy: 'admin',
         grantedAt: now,
+        grantStartsAt: now.subtract(const Duration(hours: 1)),
         grantExpiresAt: now.add(const Duration(days: 30)),
+        grantModality: 'temporary',
         createdAt: now,
         updatedAt: now,
       );
-      expect(e.isAdminGrant, isTrue);
-      expect(e.isPro, isTrue);
+      expect(e.isAdminGrantActive(now: now), isTrue);
+      expect(e.isProAt(now: now), isTrue);
     });
 
     test('admin_grant expirado no es Pro', () {
-      final now = DateTime.now();
+      final now = DateTime.utc(2026, 10, 27, 15);
       final e = UserEntitlement(
         uid: 'u1',
         plan: SubscriptionPlan.pro,
@@ -87,8 +101,57 @@ void main() {
         createdAt: now,
         updatedAt: now,
       );
-      expect(e.isAdminGrant, isFalse);
-      expect(e.isPro, isFalse);
+      expect(e.isAdminGrantActive(now: now), isFalse);
+      expect(e.isProAt(now: now), isFalse);
+    });
+
+    test('admin_grant programado no es Pro antes del inicio', () {
+      final now = DateTime.utc(2026, 10, 27, 15);
+      final e = UserEntitlement(
+        uid: 'u1',
+        plan: SubscriptionPlan.pro,
+        subscriptionStatus: 'active',
+        source: 'admin_grant',
+        grantModality: 'temporary',
+        grantStartsAt: now.add(const Duration(days: 1)),
+        grantExpiresAt: now.add(const Duration(days: 8)),
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(e.isProAt(now: now), isFalse);
+      expect(
+        e.isProAt(now: now.add(const Duration(days: 1))),
+        isTrue,
+      );
+    });
+
+    test('admin_grant temporal con fechas inválidas no es Pro', () {
+      final now = DateTime.utc(2026, 10, 27, 15);
+      final e = UserEntitlement.fromMap({
+        'uid': 'u1',
+        'plan': 'pro',
+        'subscriptionStatus': 'active',
+        'source': 'admin_grant',
+        'grantModality': 'temporary',
+        'grantExpiresAt': '%%%',
+        'createdAt': now.toIso8601String(),
+        'updatedAt': now.toIso8601String(),
+      });
+      expect(e.grantWindowInvalid, isTrue);
+      expect(e.isProAt(now: now), isFalse);
+    });
+
+    test('admin_grant legado sin fechas sigue Pro', () {
+      final now = DateTime.utc(2026, 10, 27, 15);
+      final e = UserEntitlement(
+        uid: 'u1',
+        plan: SubscriptionPlan.pro,
+        subscriptionStatus: 'active',
+        source: 'admin_grant',
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(e.isProAt(now: now), isTrue);
     });
   });
 

@@ -105,6 +105,21 @@ void main() {
       );
       expect(PlanLimits.limitReachedMessage(isPro: false), contains('Free'));
     });
+
+    test('Rules Free exigen usage existente', () {
+      expect(
+        PlanLimits.freeRulesAllowCreate(usageExists: false, resumeCount: 0),
+        isFalse,
+      );
+      expect(
+        PlanLimits.freeRulesAllowCreate(usageExists: true, resumeCount: 0),
+        isTrue,
+      );
+      expect(
+        PlanLimits.freeRulesAllowCreate(usageExists: true, resumeCount: 3),
+        isFalse,
+      );
+    });
   });
 
   group('ResumePhotoService.processBytes', () {

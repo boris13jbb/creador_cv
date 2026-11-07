@@ -17,6 +17,7 @@ import '../features/resumes/forms/editor_dropdown_choices.dart';
 import '../features/templates/cv_template_thumbnail.dart';
 import '../features/templates/cv_templates.dart';
 import '../models/resume.dart';
+import '../saas/models/subscription_access.dart';
 import '../saas/providers/auth_controller.dart';
 import '../services/db_service.dart';
 
@@ -171,12 +172,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
     _perfilController.addListener(_onFormChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final isPro = context.read<AuthController>().isPro;
-      // Solo fuerza fallback en CVs nuevos abiertos con ?design=Pro.
-      if (widget.resumeExistente == null &&
-          !CvTemplates.canUseDesign(_designIndex, isPro: isPro)) {
-        setState(() => _designIndex = CvTemplates.freeFallbackIndex);
-      }
+      _applyConfirmedFreeFallback();
       _recoverLostPhoto();
     });
   }
@@ -186,6 +182,16 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
     if (state == AppLifecycleState.resumed && _awaitingGallery) {
       _recoverLostPhoto();
     }
+  }
+
+  /// Un CV nuevo con plantilla Pro vuelve a Clásico solo si Free está confirmado.
+  void _applyConfirmedFreeFallback() {
+    if (widget.resumeExistente != null) return;
+    final access = context.read<AuthController>().subscriptionAccess;
+    if (access != SubscriptionAccess.free) return;
+    if (CvTemplates.canUseDesign(_designIndex, isPro: false)) return;
+    if (_designIndex == CvTemplates.freeFallbackIndex) return;
+    setState(() => _designIndex = CvTemplates.freeFallbackIndex);
   }
 
   void _onFormChanged() => _markDirty();
@@ -521,7 +527,27 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
   }
 
   Future<void> _selectDesign(int index) async {
-    final isPro = context.read<AuthController>().isPro;
+    final access = context.read<AuthController>().subscriptionAccess;
+    if (access.isUnresolved) {
+      if (CvTemplates.requiresPro(index) && index != _designIndex) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              access == SubscriptionAccess.error
+                  ? 'No se pudo verificar tu plan. La plantilla guardada no cambia hasta confirmarlo.'
+                  : 'Estamos verificando tu plan. La plantilla guardada no cambia hasta confirmarlo.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (!CvTemplates.requiresPro(index)) {
+        setState(() => _designIndex = index);
+        _markDirty();
+      }
+      return;
+    }
+    final isPro = access == SubscriptionAccess.pro;
     if (!CvTemplates.canUseDesign(index, isPro: isPro)) {
       final goPro = await showDialog<bool>(
         context: context,
@@ -554,7 +580,14 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
   @override
   Widget build(BuildContext context) {
     final desktop = AppLayout.of(context) == AppLayoutType.desktop;
-    final isPro = context.watch<AuthController>().isPro;
+    final access = context.watch<AuthController>().subscriptionAccess;
+    if (widget.resumeExistente == null &&
+        access == SubscriptionAccess.free &&
+        !CvTemplates.canUseDesign(_designIndex, isPro: false)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applyConfirmedFreeFallback();
+      });
+    }
 
     return PopScope(
       canPop: false,
@@ -641,7 +674,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
                   ? Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(flex: 3, child: _buildFormScroll(isPro)),
+                        Expanded(flex: 3, child: _buildFormScroll(access)),
                         const VerticalDivider(width: 1),
                         SizedBox(
                           width: 320,
@@ -649,7 +682,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
                         ),
                       ],
                     )
-                  : _buildFormScroll(isPro),
+                  : _buildFormScroll(access),
             ),
             floatingActionButton: Padding(
               padding: const EdgeInsets.only(bottom: 16, right: 16),
@@ -703,7 +736,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
     );
   }
 
-  Widget _buildFormScroll(bool isPro) {
+  Widget _buildFormScroll(SubscriptionAccess access) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: AppContentWidth(
@@ -715,7 +748,17 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
             _buildHeaderSection(),
             const Divider(),
             _buildSectionTitle('Selecciona un Diseño'),
-            if (!isPro)
+            if (access.isUnresolved)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Text(
+                  access == SubscriptionAccess.error
+                      ? 'No se pudo verificar tu plan. Reintenta; la plantilla guardada se conserva.'
+                      : 'Verificando tu plan. La plantilla guardada se conserva.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              )
+            else if (access == SubscriptionAccess.free)
               Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: Text(
@@ -731,7 +774,7 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
                   _buildDesignOption(
                     template.designIndex,
                     template.name,
-                    isPro,
+                    access,
                   ),
               ],
             ),
@@ -1118,9 +1161,14 @@ class _NuevoCvScreenState extends State<NuevoCvScreen>
     );
   }
 
-  Widget _buildDesignOption(int index, String title, bool isPro) {
+  Widget _buildDesignOption(
+    int index,
+    String title,
+    SubscriptionAccess access,
+  ) {
     final isSelected = _designIndex == index;
-    final locked = CvTemplates.requiresPro(index) && !isPro;
+    final locked =
+        CvTemplates.requiresPro(index) && access == SubscriptionAccess.free;
     final width = MediaQuery.sizeOf(context).width;
     final tileWidth = width < 600
         ? (width - 48) / 2
